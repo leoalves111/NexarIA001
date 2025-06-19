@@ -38,12 +38,20 @@ export default function LoginPage() {
     setLoading(true)
     setError("")
 
-    const { error } = await signIn(email, password)
+    try {
+      const { error } = await signIn(email, password)
 
-    if (error) {
-      setError(error.message)
-    } else {
-      router.push("/dashboard")
+      if (error) {
+        setError(error.message)
+      } else {
+        // Aguardar um pouco para o estado ser atualizado
+        setTimeout(() => {
+          router.push("/dashboard")
+          router.refresh()
+        }, 100)
+      }
+    } catch (err) {
+      setError("Erro inesperado. Tente novamente.")
     }
 
     setLoading(false)

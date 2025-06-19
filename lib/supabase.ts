@@ -5,7 +5,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 // Check if we're in a browser environment and have the required env vars
-const isSupabaseConfigured = typeof window !== "undefined" && supabaseUrl && supabaseAnonKey
+const isSupabaseConfigured = supabaseUrl && supabaseAnonKey
 
 // Create a mock client that mimics Supabase's interface
 const createMockClient = () => ({

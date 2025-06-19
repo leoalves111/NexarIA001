@@ -1,18 +1,16 @@
 "use client"
 
 import type React from "react"
-
 import { createContext, useContext, useEffect, useState } from "react"
-import type { User, Session } from "@supabase/supabase-js"
-import { supabase } from "@/lib/supabase"
+import { useSessionContext, useSupabaseClient, useUser } from "@supabase/auth-helpers-react"
 import type { Database } from "@/types/database"
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"]
 type Subscription = Database["public"]["Tables"]["subscriptions"]["Row"]
 
 interface AuthContextType {
-  user: User | null
-  session: Session | null
+  user: any
+  session: any
   profile: Profile | null
   subscription: Subscription | null
   loading: boolean
@@ -27,105 +25,147 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
+  const supabase = useSupabaseClient<Database>()
+  const sessionContext = useSessionContext()
+  const session = sessionContext.session
+  const sessionLoading = sessionContext.isLoading
+  const user = useUser()
+
+  const hasSupabaseConfig = process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
   const [profile, setProfile] = useState<Profile | null>(null)
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isDemo, setIsDemo] = useState(false)
+  const [isDemo, setIsDemo] = useState(!hasSupabaseConfig)
+
+  const setupDemoMode = () => {
+    setIsDemo(true)
+    const demoUserId = "demo-user-id"
+    const demoProfile: Profile = {
+      id: demoUserId,
+      tipo_pessoa: "PF",
+      nome: "Usuário",
+      sobrenome: "Demo",
+      cpf: null,
+      razao_social: null,
+      nome_fantasia: null,
+      cnpj: null,
+      nome_responsavel: null,
+      email: "demo@nexaria.com",
+      whatsapp: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    const demoSubscription: Subscription = {
+      id: "demo-subscription",
+      user_id: demoUserId,
+      plano: "teste_gratis",
+      status: "active",
+      creditos_simples: 5,
+      creditos_avancados: 0,
+      data_expiracao: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    setProfile(demoProfile)
+    setSubscription(demoSubscription)
+    setLoading(false)
+  }
 
   useEffect(() => {
-    let mounted = true
+    if (!hasSupabaseConfig) {
+      setupDemoMode()
+      return
+    }
 
-    // Check if we're using the mock client
-    const usingMockClient = (supabase as any)._isMockClient === true
+    if (!supabase) {
+      setupDemoMode()
+      return
+    }
 
-    if (usingMockClient) {
-      setIsDemo(true)
-      // Set up demo data immediately
-      const demoUserId = "demo-user-id"
-      const demoProfile: Profile = {
-        id: demoUserId,
-        tipo_pessoa: "PF",
-        nome: "Usuário",
-        sobrenome: "Demo",
-        cpf: null,
-        razao_social: null,
-        nome_fantasia: null,
-        cnpj: null,
-        nome_responsavel: null,
-        email: "demo@nexaria.com",
-        whatsapp: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-
-      const demoSubscription: Subscription = {
-        id: "demo-subscription",
-        user_id: demoUserId,
-        plano: "teste_gratis",
-        status: "active",
-        creditos_simples: 5,
-        creditos_avancados: 0,
-        data_expiracao: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-
-      setProfile(demoProfile)
-      setSubscription(demoSubscription)
+    if (!sessionLoading && !session) {
       setLoading(false)
       return
     }
 
-    // Get initial session for real Supabase
-    const getInitialSession = async () => {
-      try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession()
+    if (user && session && typeof window !== "undefined") {
+      fetchUserData(user.id)
+    } else {
+      setLoading(false)
+    }
+  }, [user, session, sessionLoading, hasSupabaseConfig, supabase])
 
-        if (!mounted) return
+  const fetchUserData = async (userId: string) => {
+    try {
+      const profilePromise = fetchWithTimeout(
+        () => supabase.from("profiles").select("*").eq("id", userId).single(),
+        5000,
+      )
 
-        if (error) {
-          console.error("Error getting session:", error)
-          // If there's an auth error, switch to demo mode
-          setIsDemo(true)
-          setLoading(false)
-          return
+      const subscriptionPromise = fetchWithTimeout(
+        () => supabase.from("subscriptions").select("*").eq("user_id", userId).single(),
+        5000,
+      )
+
+      const [profileResult, subscriptionResult] = await Promise.allSettled([profilePromise, subscriptionPromise])
+
+      if (profileResult.status === "fulfilled") {
+        const { data, error } = profileResult.value
+        if (!error || error.code === "PGRST116") {
+          setProfile(data || null)
         }
+      }
 
-        setSession(session)
-        setUser(session?.user ?? null)
-
-        if (session?.user) {
-          await Promise.all([fetchProfile(session.user.id), fetchSubscription(session.user.id)])
+      if (subscriptionResult.status === "fulfilled") {
+        const { data, error } = subscriptionResult.value
+        if (!error || error.code === "PGRST116") {
+          setSubscription(data || null)
         }
-      } catch (error) {
-        console.error("Network error in getInitialSession:", error)
-        // Fallback to demo mode on any network error
-        setIsDemo(true)
-        const demoUserId = "demo-user-id"
-        const demoProfile: Profile = {
-          id: demoUserId,
-          tipo_pessoa: "PF",
-          nome: "Usuário",
-          sobrenome: "Demo",
-          cpf: null,
-          razao_social: null,
-          nome_fantasia: null,
-          cnpj: null,
-          nome_responsavel: null,
-          email: "demo@nexaria.com",
-          whatsapp: null,
+      }
+
+      // Se não encontrou perfil, criar um baseado nos dados do usuário
+      if (profileResult.status === "fulfilled" && !profileResult.value.data && user) {
+        const userMetadata = user.user_metadata || {}
+        const email = user.email || ""
+
+        // Extrair nome do email se não houver metadata
+        const emailName = email.split("@")[0]
+        const firstName = userMetadata.nome || userMetadata.first_name || emailName || "Usuário"
+        const lastName = userMetadata.sobrenome || userMetadata.last_name || ""
+
+        const newProfile: Profile = {
+          id: userId,
+          tipo_pessoa: userMetadata.tipo_pessoa || "PF",
+          nome: firstName,
+          sobrenome: lastName,
+          cpf: userMetadata.cpf || null,
+          razao_social: userMetadata.razao_social || null,
+          nome_fantasia: userMetadata.nome_fantasia || null,
+          cnpj: userMetadata.cnpj || null,
+          nome_responsavel: userMetadata.nome_responsavel || null,
+          email: email,
+          whatsapp: userMetadata.whatsapp || null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }
 
-        const demoSubscription: Subscription = {
-          id: "demo-subscription",
-          user_id: demoUserId,
+        setProfile(newProfile)
+
+        // Tentar criar o perfil no banco (silenciosamente)
+        try {
+          await supabase.from("profiles").insert(newProfile)
+        } catch (err) {
+          // Ignorar erro de criação
+        }
+      }
+
+      // Se não encontrou subscription, criar uma padrão
+      if (subscriptionResult.status === "fulfilled" && !subscriptionResult.value.data) {
+        const newSubscription: Subscription = {
+          id: `sub-${userId}`,
+          user_id: userId,
           plano: "teste_gratis",
           status: "active",
           creditos_simples: 5,
@@ -135,114 +175,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           updated_at: new Date().toISOString(),
         }
 
-        setProfile(demoProfile)
-        setSubscription(demoSubscription)
-      } finally {
-        if (mounted) {
-          setLoading(false)
+        setSubscription(newSubscription)
+
+        // Tentar criar a subscription no banco (silenciosamente)
+        try {
+          await supabase.from("subscriptions").insert(newSubscription)
+        } catch (err) {
+          // Ignorar erro de criação
         }
       }
-    }
 
-    getInitialSession()
-
-    // Listen for auth changes (only for real Supabase)
-    let authSubscription: any = null
-
-    try {
-      const {
-        data: { subscription: authSub },
-      } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (!mounted) return
-
-        setSession(session)
-        setUser(session?.user ?? null)
-
-        if (session?.user) {
-          await Promise.all([fetchProfile(session.user.id), fetchSubscription(session.user.id)])
-        } else {
-          setProfile(null)
-          setSubscription(null)
-        }
-        setLoading(false)
-      })
-
-      authSubscription = authSub
+      setLoading(false)
     } catch (error) {
-      console.error("Error setting up auth listener:", error)
-    }
-
-    return () => {
-      mounted = false
-      if (authSubscription) {
-        authSubscription.unsubscribe()
-      }
-    }
-  }, [])
-
-  const fetchProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
-
-      if (error && error.code !== "PGRST116") {
-        console.error("Error fetching profile:", error)
-        return
-      }
-      setProfile(data || null)
-    } catch (error) {
-      console.error("Network error fetching profile:", error)
-      // On network error, set demo mode
-      setIsDemo(true)
-      const demoProfile: Profile = {
-        id: userId,
-        tipo_pessoa: "PF",
-        nome: "Usuário",
-        sobrenome: "Demo",
-        cpf: null,
-        razao_social: null,
-        nome_fantasia: null,
-        cnpj: null,
-        nome_responsavel: null,
-        email: "demo@nexaria.com",
-        whatsapp: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-      setProfile(demoProfile)
+      setLoading(false)
     }
   }
 
-  const fetchSubscription = async (userId: string) => {
-    try {
-      const { data, error } = await supabase.from("subscriptions").select("*").eq("user_id", userId).single()
-
-      if (error && error.code !== "PGRST116") {
-        console.error("Error fetching subscription:", error)
-        return
-      }
-      setSubscription(data || null)
-    } catch (error) {
-      console.error("Network error fetching subscription:", error)
-      // On network error, set demo mode
-      setIsDemo(true)
-      const demoSubscription: Subscription = {
-        id: "demo-subscription",
-        user_id: userId,
-        plano: "teste_gratis",
-        status: "active",
-        creditos_simples: 5,
-        creditos_avancados: 0,
-        data_expiracao: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-      setSubscription(demoSubscription)
-    }
+  const fetchWithTimeout = (fetchFn: () => Promise<any>, timeout: number) => {
+    return Promise.race([
+      fetchFn(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), timeout)),
+    ])
   }
 
   const signIn = async (email: string, password: string) => {
-    if (isDemo) {
-      // Demo mode - simulate successful login
+    if (isDemo || !supabase) {
       return { error: null }
     }
 
@@ -258,8 +215,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signUp = async (email: string, password: string, userData: any) => {
-    if (isDemo) {
-      // Demo mode - simulate successful signup
+    if (isDemo || !supabase) {
       return { error: null }
     }
 
@@ -278,10 +234,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    if (isDemo) {
-      // Demo mode - just reset state
-      setUser(null)
-      setSession(null)
+    if (isDemo || !supabase) {
       setProfile(null)
       setSubscription(null)
       return
@@ -289,14 +242,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       await supabase.auth.signOut()
+      setProfile(null)
+      setSubscription(null)
     } catch (err) {
-      console.error("Error signing out:", err)
+      // Ignorar erro de logout
     }
   }
 
   const updateProfile = async (updates: Partial<Profile>) => {
-    if (isDemo) {
-      // Demo mode - simulate update
+    if (isDemo || !supabase) {
       if (profile) {
         setProfile({ ...profile, ...updates })
       }
@@ -308,8 +262,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { error } = await supabase.from("profiles").update(updates).eq("id", user.id)
 
-      if (!error) {
-        await fetchProfile(user.id)
+      if (!error && typeof window !== "undefined") {
+        await fetchUserData(user.id)
       }
 
       return { error }
@@ -319,18 +273,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const refreshProfile = async () => {
-    if (isDemo) {
-      // Demo mode - nothing to refresh
-      return
-    }
+    if (isDemo || !supabase || !user || typeof window === "undefined") return
 
-    if (user) {
-      try {
-        await fetchProfile(user.id)
-        await fetchSubscription(user.id)
-      } catch (err) {
-        console.error("Error refreshing profile:", err)
-      }
+    try {
+      await fetchUserData(user.id)
+    } catch (err) {
+      // Ignorar erro de refresh
     }
   }
 
@@ -339,7 +287,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     session,
     profile,
     subscription,
-    loading,
+    loading: loading || sessionLoading,
     isDemo,
     signIn,
     signUp,
