@@ -1,12 +1,13 @@
 "use client"
 
 import { useAuth } from "@/hooks/useAuth"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { CreditCard, FileText, Download, Calendar, TrendingUp, Sparkles, Zap } from "lucide-react"
+import { CreditCard, FileText, Download, Calendar, Sparkles, Zap, TrendingUp } from "lucide-react"
 import Link from "next/link"
 import DashboardLayout from "@/components/dashboard/dashboard-layout"
+import StatusCard from "@/components/dashboard/status-card"
+import QuickActionCard from "@/components/dashboard/quick-action-card"
+import AlertBanner from "@/components/dashboard/alert-banner"
 import SupabaseStatus from "@/components/supabase-status"
 
 export default function DashboardPage() {
@@ -18,7 +19,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Carregando dados do usuário...</p>
+            <p className="text-gray-600 dark:text-gray-400">Carregando dados do usuário...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -30,7 +31,7 @@ export default function DashboardPage() {
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-center">
-            <p className="text-gray-600 mb-4">Redirecionando para login...</p>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">Redirecionando para login...</p>
             <Link href="/auth/login">
               <Button>Fazer Login</Button>
             </Link>
@@ -56,162 +57,129 @@ export default function DashboardPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-8">
+        {/* Supabase Status Alert */}
         <SupabaseStatus />
 
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+        {/* Welcome Header */}
+        <div className="text-center lg:text-left">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white leading-relaxed">
             Olá, {profile?.nome || "Usuário"}! 👋
-            {isDemo && <span className="text-sm text-orange-600 ml-2">(Modo Demo)</span>}
+            {isDemo && (
+              <span className="inline-block ml-3 px-3 py-1 text-sm bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-200 rounded-full">
+                Modo Demo
+              </span>
+            )}
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">Bem-vindo ao seu painel de controle do NEXAR IA</p>
+          <p className="text-lg text-gray-600 dark:text-gray-400 leading-relaxed mt-2">
+            Bem-vindo ao seu painel de controle do NEXAR IA
+          </p>
         </div>
 
-        {/* Status Cards */}
+        {/* Divider */}
+        <div className="border-t border-gray-200 dark:border-gray-700"></div>
+
+        {/* Status Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Plano Atual</CardTitle>
-              <CreditCard className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold capitalize">{subscription?.plano || "Carregando..."}</div>
-              <p className="text-xs text-muted-foreground">
-                {daysLeft > 0 ? `${daysLeft} dias restantes` : "Expirado"}
-              </p>
-            </CardContent>
-          </Card>
+          <StatusCard
+            title="Plano Atual"
+            value={subscription?.plano || "Carregando..."}
+            subtitle={daysLeft > 0 ? `${daysLeft} dias restantes` : "Expirado"}
+            icon={CreditCard}
+            variant={subscription?.status === "active" ? "success" : "warning"}
+          />
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Créditos Simples</CardTitle>
-              <Sparkles className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{subscription?.creditos_simples || 0}</div>
-              <p className="text-xs text-muted-foreground">CONTRATO TURBO</p>
-            </CardContent>
-          </Card>
+          <StatusCard
+            title="Créditos Simples"
+            value={subscription?.creditos_simples || 0}
+            subtitle="CONTRATO TURBO"
+            icon={Sparkles}
+            variant="primary"
+          />
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Créditos Avançados</CardTitle>
-              <Zap className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{subscription?.creditos_avancados || 0}</div>
-              <p className="text-xs text-muted-foreground">CONTRATO AVANÇADO</p>
-            </CardContent>
-          </Card>
+          <StatusCard
+            title="Créditos Avançados"
+            value={subscription?.creditos_avancados || 0}
+            subtitle="CONTRATO AVANÇADO"
+            icon={Zap}
+            variant="primary"
+          />
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Status</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                <Badge variant={subscription?.status === "active" ? "default" : "destructive"} className="text-xs">
-                  {subscription?.status === "active" ? "Ativo" : "Inativo"}
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Expira em {subscription ? formatDate(subscription.data_expiracao) : "N/A"}
-              </p>
-            </CardContent>
-          </Card>
+          <StatusCard
+            title="Status da Conta"
+            value={subscription?.status === "active" ? "Ativo" : "Inativo"}
+            subtitle={`Expira em ${subscription ? formatDate(subscription.data_expiracao) : "N/A"}`}
+            icon={TrendingUp}
+            variant={subscription?.status === "active" ? "success" : "danger"}
+          />
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary-600" />
-                Gerar Contrato
-              </CardTitle>
-              <CardDescription>Crie contratos personalizados com nossa IA</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link href="/dashboard/generator">
-                <Button className="w-full bg-primary-600 hover:bg-primary-700">Começar Agora</Button>
-              </Link>
-            </CardContent>
-          </Card>
+        {/* Divider */}
+        <div className="border-t border-gray-200 dark:border-gray-700"></div>
 
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-secondary-600" />
-                Templates
-              </CardTitle>
-              <CardDescription>Explore nossa biblioteca de templates</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link href="/dashboard/templates">
-                <Button variant="outline" className="w-full">
-                  Ver Templates
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
+        {/* Quick Actions Section */}
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center lg:text-left">
+            Ações Rápidas
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <QuickActionCard
+              title="Gerar Contrato"
+              description="Crie contratos personalizados com nossa IA avançada"
+              href="/dashboard/generator"
+              icon={Sparkles}
+              buttonText="Começar Agora"
+              variant="primary"
+              color="primary"
+            />
 
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Download className="h-5 w-5 text-blue-600" />
-                Exportações
-              </CardTitle>
-              <CardDescription>Gerencie seus contratos exportados</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link href="/dashboard/exports">
-                <Button variant="outline" className="w-full">
-                  Ver Exportações
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
+            <QuickActionCard
+              title="Biblioteca de Templates"
+              description="Explore nossa coleção completa de templates jurídicos"
+              href="/dashboard/templates"
+              icon={FileText}
+              buttonText="Ver Templates"
+              variant="outline"
+              color="secondary"
+            />
+
+            <QuickActionCard
+              title="Gerenciar Exportações"
+              description="Acesse e organize todos os seus contratos exportados"
+              href="/dashboard/exports"
+              icon={Download}
+              buttonText="Ver Exportações"
+              variant="outline"
+              color="blue"
+            />
+          </div>
         </div>
 
-        {/* Subscription Alert */}
+        {/* Subscription Alerts */}
         {daysLeft <= 3 && daysLeft > 0 && (
-          <Card className="border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-900/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-orange-800 dark:text-orange-200">
-                <Calendar className="h-5 w-5" />
-                Atenção: Assinatura expirando
-              </CardTitle>
-              <CardDescription className="text-orange-700 dark:text-orange-300">
-                Sua assinatura expira em {daysLeft} dias. Renove agora para continuar usando todos os recursos.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link href="/dashboard/subscription">
-                <Button className="bg-orange-600 hover:bg-orange-700 text-white">Renovar Assinatura</Button>
-              </Link>
-            </CardContent>
-          </Card>
+          <AlertBanner
+            title="Atenção: Assinatura expirando"
+            description={`Sua assinatura expira em ${daysLeft} dias. Renove agora para continuar usando todos os recursos.`}
+            icon={Calendar}
+            variant="warning"
+            actionButton={{
+              text: "Renovar Assinatura",
+              onClick: () => (window.location.href = "/dashboard/subscription"),
+            }}
+          />
         )}
 
         {daysLeft <= 0 && (
-          <Card className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-red-800 dark:text-red-200">
-                <Calendar className="h-5 w-5" />
-                Assinatura Expirada
-              </CardTitle>
-              <CardDescription className="text-red-700 dark:text-red-300">
-                Sua assinatura expirou. Renove agora para continuar gerando contratos.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link href="/dashboard/subscription">
-                <Button className="bg-red-600 hover:bg-red-700 text-white">Renovar Agora</Button>
-              </Link>
-            </CardContent>
-          </Card>
+          <AlertBanner
+            title="Assinatura Expirada"
+            description="Sua assinatura expirou. Renove agora para continuar gerando contratos."
+            icon={Calendar}
+            variant="danger"
+            actionButton={{
+              text: "Renovar Agora",
+              onClick: () => (window.location.href = "/dashboard/subscription"),
+            }}
+          />
         )}
       </div>
     </DashboardLayout>
