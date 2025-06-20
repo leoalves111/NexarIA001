@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js"
+import { createBrowserSupabaseClient } from "@supabase/auth-helpers-nextjs"
 import type { Database } from "@/types/database"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -88,9 +88,14 @@ const createMockClient = () => ({
   _isMockClient: true,
 })
 
-export const supabase = isSupabaseConfigured
-  ? createClient<Database>(supabaseUrl!, supabaseAnonKey!)
-  : (createMockClient() as any)
+// Cliente para uso em componentes que não estão no contexto
+export const createSupabaseClient = () =>
+  createBrowserSupabaseClient<Database>({
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  })
+
+export const supabase = isSupabaseConfigured ? createSupabaseClient() : (createMockClient() as any)
 
 // Client-side auth helpers
 export const auth = {

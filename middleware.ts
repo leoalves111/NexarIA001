@@ -1,32 +1,17 @@
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import type { Database } from "@/types/database"
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
 
   try {
-    // Verificar se Supabase está configurado
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      // Modo demo - permitir acesso a tudo
-      return res
-    }
+    const supabase = createMiddlewareClient<Database>({ req, res })
 
-    const supabase = createMiddlewareClient({ req, res })
-
-    // Timeout para evitar travamento
-    const sessionPromise = supabase.auth.getSession()
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Session timeout")), 3000))
-
-    let session = null
-    try {
-      const result = (await Promise.race([sessionPromise, timeoutPromise])) as any
-      session = result.data?.session
-    } catch (error) {
-      console.error("Session check timeout:", error)
-      // Em caso de timeout, permitir acesso (modo demo)
-      return res
-    }
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
 
     // Protected routes
     const protectedRoutes = ["/dashboard", "/profile", "/generator", "/templates", "/exports", "/subscription"]
@@ -48,7 +33,6 @@ export async function middleware(req: NextRequest) {
     return res
   } catch (error) {
     console.error("Middleware error:", error)
-    // Em caso de erro, permitir acesso
     return res
   }
 }

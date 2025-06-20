@@ -1,10 +1,8 @@
 "use client"
 
 import { Badge } from "@/components/ui/badge"
-
 import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAuth } from "@/hooks/useAuth"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,30 +10,46 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, User, Lock, AlertTriangle } from "lucide-react"
+import { Loader2, User, Lock, AlertTriangle, CheckCircle } from "lucide-react"
 import { formatCPF, formatCNPJ, formatPhone, validateCPF, validateCNPJ } from "@/utils/validation"
 import { useToast } from "@/hooks/use-toast"
 import DashboardLayout from "@/components/dashboard/dashboard-layout"
 
 export default function ProfilePage() {
-  const { user, profile, updateProfile } = useAuth()
+  const { user, profile, updateProfile, loading: authLoading } = useAuth()
   const { toast } = useToast()
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
 
-  // Dados do perfil
+  // Dados do perfil - sincronizar com o profile do contexto
   const [profileData, setProfileData] = useState({
-    nome: profile?.nome || "",
-    sobrenome: profile?.sobrenome || "",
-    cpf: profile?.cpf || "",
-    razao_social: profile?.razao_social || "",
-    nome_fantasia: profile?.nome_fantasia || "",
-    cnpj: profile?.cnpj || "",
-    nome_responsavel: profile?.nome_responsavel || "",
-    whatsapp: profile?.whatsapp || "",
+    nome: "",
+    sobrenome: "",
+    cpf: "",
+    razao_social: "",
+    nome_fantasia: "",
+    cnpj: "",
+    nome_responsavel: "",
+    whatsapp: "",
   })
+
+  // Sincronizar dados do perfil quando o profile mudar
+  useEffect(() => {
+    if (profile) {
+      setProfileData({
+        nome: profile.nome || "",
+        sobrenome: profile.sobrenome || "",
+        cpf: profile.cpf || "",
+        razao_social: profile.razao_social || "",
+        nome_fantasia: profile.nome_fantasia || "",
+        cnpj: profile.cnpj || "",
+        nome_responsavel: profile.nome_responsavel || "",
+        whatsapp: profile.whatsapp || "",
+      })
+    }
+  }, [profile])
 
   // Dados de senha
   const [passwordData, setPasswordData] = useState({
@@ -60,18 +74,21 @@ export default function ProfilePage() {
         throw new Error("CNPJ inválido")
       }
 
-      const { error } = await updateProfile({
-        nome: profileData.nome,
-        sobrenome: profileData.sobrenome,
-        cpf: profileData.cpf,
-        razao_social: profileData.razao_social,
-        nome_fantasia: profileData.nome_fantasia,
-        cnpj: profileData.cnpj,
-        nome_responsavel: profileData.nome_responsavel,
-        whatsapp: profileData.whatsapp,
-      })
+      // Preparar dados para atualização (apenas campos não vazios)
+      const updateData: any = {}
 
-      if (error) throw new Error(error)
+      if (profileData.nome.trim()) updateData.nome = profileData.nome.trim()
+      if (profileData.sobrenome.trim()) updateData.sobrenome = profileData.sobrenome.trim()
+      if (profileData.cpf.trim()) updateData.cpf = profileData.cpf.trim()
+      if (profileData.razao_social.trim()) updateData.razao_social = profileData.razao_social.trim()
+      if (profileData.nome_fantasia.trim()) updateData.nome_fantasia = profileData.nome_fantasia.trim()
+      if (profileData.cnpj.trim()) updateData.cnpj = profileData.cnpj.trim()
+      if (profileData.nome_responsavel.trim()) updateData.nome_responsavel = profileData.nome_responsavel.trim()
+      if (profileData.whatsapp.trim()) updateData.whatsapp = profileData.whatsapp.trim()
+
+      const { error } = await updateProfile(updateData)
+
+      if (error) throw new Error(error.message || "Erro ao atualizar perfil")
 
       setSuccess("Perfil atualizado com sucesso!")
       toast({
@@ -133,6 +150,16 @@ export default function ProfilePage() {
     }
   }
 
+  if (authLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </DashboardLayout>
+    )
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -171,6 +198,7 @@ export default function ProfilePage() {
 
                 {success && (
                   <Alert className="mb-6 border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20">
+                    <CheckCircle className="h-4 w-4" />
                     <AlertDescription className="text-green-800 dark:text-green-200">{success}</AlertDescription>
                   </Alert>
                 )}
@@ -182,7 +210,7 @@ export default function ProfilePage() {
                       <Input
                         id="email"
                         type="email"
-                        value={user?.email || ""}
+                        value={user?.email || profile?.email || ""}
                         disabled
                         className="bg-gray-100 dark:bg-gray-800"
                       />
@@ -208,6 +236,7 @@ export default function ProfilePage() {
                               id="nome"
                               value={profileData.nome}
                               onChange={(e) => setProfileData({ ...profileData, nome: e.target.value })}
+                              placeholder="Seu nome"
                             />
                           </div>
                           <div>
@@ -216,6 +245,7 @@ export default function ProfilePage() {
                               id="sobrenome"
                               value={profileData.sobrenome}
                               onChange={(e) => setProfileData({ ...profileData, sobrenome: e.target.value })}
+                              placeholder="Seu sobrenome"
                             />
                           </div>
                         </div>
@@ -227,6 +257,7 @@ export default function ProfilePage() {
                             value={profileData.cpf}
                             onChange={(e) => setProfileData({ ...profileData, cpf: formatCPF(e.target.value) })}
                             maxLength={14}
+                            placeholder="000.000.000-00"
                           />
                         </div>
                       </>
@@ -238,6 +269,7 @@ export default function ProfilePage() {
                             id="razao-social"
                             value={profileData.razao_social}
                             onChange={(e) => setProfileData({ ...profileData, razao_social: e.target.value })}
+                            placeholder="Razão social da empresa"
                           />
                         </div>
 
@@ -247,6 +279,7 @@ export default function ProfilePage() {
                             id="nome-fantasia"
                             value={profileData.nome_fantasia}
                             onChange={(e) => setProfileData({ ...profileData, nome_fantasia: e.target.value })}
+                            placeholder="Nome fantasia da empresa"
                           />
                         </div>
 
@@ -257,6 +290,7 @@ export default function ProfilePage() {
                             value={profileData.cnpj}
                             onChange={(e) => setProfileData({ ...profileData, cnpj: formatCNPJ(e.target.value) })}
                             maxLength={18}
+                            placeholder="00.000.000/0000-00"
                           />
                         </div>
 
@@ -266,6 +300,7 @@ export default function ProfilePage() {
                             id="nome-responsavel"
                             value={profileData.nome_responsavel}
                             onChange={(e) => setProfileData({ ...profileData, nome_responsavel: e.target.value })}
+                            placeholder="Nome do responsável"
                           />
                         </div>
                       </>
@@ -278,6 +313,7 @@ export default function ProfilePage() {
                         value={profileData.whatsapp}
                         onChange={(e) => setProfileData({ ...profileData, whatsapp: formatPhone(e.target.value) })}
                         maxLength={15}
+                        placeholder="(11) 99999-9999"
                       />
                     </div>
                   </div>
@@ -313,6 +349,7 @@ export default function ProfilePage() {
 
                 {success && (
                   <Alert className="mb-6 border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20">
+                    <CheckCircle className="h-4 w-4" />
                     <AlertDescription className="text-green-800 dark:text-green-200">{success}</AlertDescription>
                   </Alert>
                 )}

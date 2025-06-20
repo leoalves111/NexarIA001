@@ -10,7 +10,35 @@ import DashboardLayout from "@/components/dashboard/dashboard-layout"
 import SupabaseStatus from "@/components/supabase-status"
 
 export default function DashboardPage() {
-  const { profile, subscription } = useAuth()
+  const { user, profile, subscription, loading, isDemo } = useAuth()
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Carregando dados do usuário...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (!user && !isDemo) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <p className="text-gray-600 mb-4">Redirecionando para login...</p>
+            <Link href="/auth/login">
+              <Button>Fazer Login</Button>
+            </Link>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("pt-BR")
@@ -30,9 +58,13 @@ export default function DashboardPage() {
     <DashboardLayout>
       <div className="space-y-6">
         <SupabaseStatus />
+
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Olá, {profile?.nome || "Usuário"}! 👋</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            Olá, {profile?.nome || "Usuário"}! 👋
+            {isDemo && <span className="text-sm text-orange-600 ml-2">(Modo Demo)</span>}
+          </h1>
           <p className="text-gray-600 dark:text-gray-400">Bem-vindo ao seu painel de controle do NEXAR IA</p>
         </div>
 
