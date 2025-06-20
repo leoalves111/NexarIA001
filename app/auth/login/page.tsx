@@ -12,7 +12,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { useAuth } from "@/hooks/useAuth"
 import AuthLayout from "@/components/auth/auth-layout"
-import SupabaseStatus from "@/components/supabase-status"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -59,7 +58,6 @@ export default function LoginPage() {
 
   return (
     <AuthLayout title="Entrar na sua conta">
-      <SupabaseStatus />
       <form className="space-y-6" onSubmit={handleSubmit}>
         {error && (
           <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20">

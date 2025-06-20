@@ -5,7 +5,21 @@ import type React from "react"
 import { useState } from "react"
 import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
-import { Home, FileText, CreditCard, User, Download, Menu, X, LogOut, Sparkles, Moon, Sun } from "lucide-react"
+import {
+  Home,
+  FileText,
+  CreditCard,
+  User,
+  Download,
+  Menu,
+  X,
+  LogOut,
+  Sparkles,
+  Moon,
+  Sun,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react"
 import { useTheme } from "next-themes"
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
@@ -16,6 +30,7 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const { user, profile, signOut } = useAuth()
   const { theme, setTheme } = useTheme()
   const router = useRouter()
@@ -37,6 +52,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const toggleTheme = () => {
     setTheme(theme === "dark" ? "light" : "dark")
+  }
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(!sidebarCollapsed)
   }
 
   return (
@@ -85,57 +104,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               })}
             </nav>
           </div>
-          <div className="flex flex-shrink-0 border-t border-gray-200 dark:border-gray-700 p-4">
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center">
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{profile?.nome || user?.email}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email}</p>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleSignOut}
-                className="hover:bg-red-100 dark:hover:bg-red-900/20"
-              >
-                <LogOut className="h-4 w-4 text-red-600" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Desktop sidebar */}
-      <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
-        <div className="flex flex-1 flex-col min-h-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-colors duration-300">
-          <div className="flex flex-1 flex-col overflow-y-auto pt-5 pb-4">
-            <div className="flex flex-shrink-0 items-center px-4 mb-8">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary-600 to-secondary-500 bg-clip-text text-transparent">
-                NEXAR IA
-              </h1>
-            </div>
-            <nav className="mt-5 flex-1 space-y-2 px-3">
-              {navigation.map((item) => {
-                const isActive = pathname === item.href
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={`group flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
-                      isActive
-                        ? "bg-primary-100 text-primary-900 dark:bg-primary-900 dark:text-primary-100 border-r-4 border-primary-600 shadow-sm"
-                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white hover:shadow-sm"
-                    }`}
-                  >
-                    <item.icon className="mr-4 h-5 w-5 flex-shrink-0 transition-colors" />
-                    {item.name}
-                  </Link>
-                )
-              })}
-            </nav>
-          </div>
-          <div className="flex flex-shrink-0 border-t border-gray-200 dark:border-gray-700 p-4">
+          {/* Mobile footer with theme and logout */}
+          <div className="mt-auto border-t border-gray-200 dark:border-gray-700 p-4">
             <div className="flex items-center justify-between w-full">
               <div className="flex items-center">
                 <div className="ml-3">
@@ -166,8 +136,115 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
       </div>
 
+      {/* Desktop sidebar */}
+      <div
+        className={`hidden lg:fixed lg:inset-y-0 lg:flex lg:flex-col transition-all duration-300 ${sidebarCollapsed ? "lg:w-16" : "lg:w-64"}`}
+      >
+        <div className="flex flex-1 flex-col min-h-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-colors duration-300">
+          {/* Header with logo and collapse button */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+            {!sidebarCollapsed && (
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary-600 to-secondary-500 bg-clip-text text-transparent">
+                NEXAR IA
+              </h1>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
+              className="hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              title={sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
+            >
+              {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </Button>
+          </div>
+
+          <div className="flex flex-1 flex-col overflow-y-auto pt-5 pb-4">
+            <nav className="mt-5 flex-1 space-y-2 px-3">
+              {navigation.map((item) => {
+                const isActive = pathname === item.href
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`group flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
+                      isActive
+                        ? "bg-primary-100 text-primary-900 dark:bg-primary-900 dark:text-primary-100 border-r-4 border-primary-600 shadow-sm"
+                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white hover:shadow-sm"
+                    }`}
+                    title={sidebarCollapsed ? item.name : undefined}
+                  >
+                    <item.icon
+                      className={`h-5 w-5 flex-shrink-0 transition-colors ${sidebarCollapsed ? "mx-auto" : "mr-4"}`}
+                    />
+                    {!sidebarCollapsed && item.name}
+                  </Link>
+                )
+              })}
+            </nav>
+          </div>
+
+          {/* Footer with user info and controls - DENTRO da sidebar */}
+          <div className="mt-auto border-t border-gray-200 dark:border-gray-700 p-4">
+            {sidebarCollapsed ? (
+              <div className="flex flex-col items-center space-y-3 w-full">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleTheme}
+                  className="hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-8 h-8"
+                  title={theme === "dark" ? "Modo claro" : "Modo escuro"}
+                >
+                  {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleSignOut}
+                  className="hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors w-8 h-8"
+                  title="Sair"
+                >
+                  <LogOut className="h-4 w-4 text-red-600" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center min-w-0 flex-1">
+                  <div className="ml-3 min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
+                      {profile?.nome || user?.email}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-1 ml-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={toggleTheme}
+                    className="hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-8 h-8"
+                    title={theme === "dark" ? "Modo claro" : "Modo escuro"}
+                  >
+                    {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleSignOut}
+                    className="hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors w-8 h-8"
+                    title="Sair"
+                  >
+                    <LogOut className="h-4 w-4 text-red-600" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Main content */}
-      <div className="lg:pl-64 flex flex-col flex-1">
+      <div className={`flex flex-col flex-1 transition-all duration-300 ${sidebarCollapsed ? "lg:pl-16" : "lg:pl-64"}`}>
         <div className="sticky top-0 z-10 flex h-16 flex-shrink-0 bg-white dark:bg-gray-800 shadow-sm lg:hidden transition-colors duration-300">
           <Button
             variant="ghost"

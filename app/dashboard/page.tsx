@@ -8,7 +8,6 @@ import DashboardLayout from "@/components/dashboard/dashboard-layout"
 import StatusCard from "@/components/dashboard/status-card"
 import QuickActionCard from "@/components/dashboard/quick-action-card"
 import AlertBanner from "@/components/dashboard/alert-banner"
-import SupabaseStatus from "@/components/supabase-status"
 
 export default function DashboardPage() {
   const { user, profile, subscription, loading, isDemo } = useAuth()
@@ -58,9 +57,6 @@ export default function DashboardPage() {
   return (
     <DashboardLayout>
       <div className="space-y-8">
-        {/* Supabase Status Alert */}
-        <SupabaseStatus />
-
         {/* Welcome Header */}
         <div className="text-center lg:text-left">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white leading-relaxed">
@@ -86,7 +82,7 @@ export default function DashboardPage() {
             value={subscription?.plano || "Carregando..."}
             subtitle={daysLeft > 0 ? `${daysLeft} dias restantes` : "Expirado"}
             icon={CreditCard}
-            variant={subscription?.status === "active" ? "success" : "warning"}
+            variant="success"
           />
 
           <StatusCard
@@ -102,7 +98,7 @@ export default function DashboardPage() {
             value={subscription?.creditos_avancados || 0}
             subtitle="CONTRATO AVANÇADO"
             icon={Zap}
-            variant="primary"
+            variant="warning"
           />
 
           <StatusCard
@@ -110,7 +106,7 @@ export default function DashboardPage() {
             value={subscription?.status === "active" ? "Ativo" : "Inativo"}
             subtitle={`Expira em ${subscription ? formatDate(subscription.data_expiracao) : "N/A"}`}
             icon={TrendingUp}
-            variant={subscription?.status === "active" ? "success" : "danger"}
+            variant="success"
           />
         </div>
 

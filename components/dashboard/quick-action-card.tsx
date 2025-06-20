@@ -87,18 +87,21 @@ export default function QuickActionCard({
   return (
     <Card
       className={`
-      hover:shadow-xl transition-all duration-300 
-      hover:-translate-y-2 cursor-pointer
-      border-2 bg-white dark:bg-gray-800
-      ${getCardStyles()}
-    `}
+        dashboard-card
+        ${getCardStyles()}
+        rounded-xl
+        border border-gray-200 dark:border-gray-700
+        bg-white dark:bg-gray-800
+        hover:shadow-xl transition-all duration-300 
+        hover:-translate-y-2 cursor-pointer
+      `}
     >
       <CardHeader className="pb-4">
-        <CardTitle className="flex items-center gap-3 text-lg">
+        <CardTitle className="flex items-center gap-3 text-lg dashboard-text">
           <Icon className={`h-6 w-6 ${getIconStyles()}`} />
           {title}
         </CardTitle>
-        <CardDescription className="text-gray-600 dark:text-gray-400 leading-relaxed">{description}</CardDescription>
+        <CardDescription className="dashboard-text-muted leading-relaxed">{description}</CardDescription>
       </CardHeader>
       <CardContent className="pt-0">
         <Link href={href}>

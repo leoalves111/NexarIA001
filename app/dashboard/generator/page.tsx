@@ -2,109 +2,204 @@
 
 import { useState } from "react"
 import { useAuth } from "@/hooks/useAuth"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
-import { Loader2, Sparkles, Zap, Save, AlertTriangle } from "lucide-react"
-import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import DashboardLayout from "@/components/dashboard/dashboard-layout"
+import ContractTypeSelector from "@/components/generator/contract-type-selector"
+import ContractForm from "@/components/generator/contract-form"
+import AdvancedSettings from "@/components/generator/advanced-settings"
+import ContractPreviewModal from "@/components/generator/contract-preview-modal"
+import { supabase } from "@/lib/supabase"
+import crypto from "crypto"
 
 export default function GeneratorPage() {
+  // Estados principais
+  const [contractType, setContractType] = useState<"simple" | "advanced">("simple")
+  const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [generating, setGenerating] = useState(false)
   const [generatedContent, setGeneratedContent] = useState("")
-  const [contractName, setContractName] = useState("")
-  const [saving, setSaving] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+
+  // Configurações avançadas
+  const [temperature, setTemperature] = useState(0.7)
+  const [maxTokens, setMaxTokens] = useState(3500)
+  const [includeLexML, setIncludeLexML] = useState(true)
+  const [customPrompt, setCustomPrompt] = useState("")
+  const [fieldMetadata, setFieldMetadata] = useState<any>({})
+
+  // Estados de integração
+  const [lexmlData, setLexmlData] = useState<any>(null)
+  const [cacheHit, setCacheHit] = useState(false)
 
   const { user, subscription, refreshProfile, isDemo } = useAuth()
   const { toast } = useToast()
 
+  // Verificar créditos
   const canGenerateSimple = subscription && subscription.creditos_simples > 0
   const canGenerateAdvanced = subscription && subscription.creditos_avancados > 0
 
-  const generateContract = async (type: "simples" | "avancado") => {
-    if (!user && !isDemo) return
-
-    if (type === "simples" && !canGenerateSimple) {
+  const generateContract = async () => {
+    if (!user && !isDemo) {
       toast({
-        title: "Créditos insuficientes",
-        description: "Você não possui créditos suficientes para gerar contratos simples.",
+        title: "Acesso negado",
+        description: "Você precisa estar logado para gerar contratos.",
         variant: "destructive",
       })
       return
     }
 
-    if (type === "avancado" && !canGenerateAdvanced) {
+    if (!title.trim() || !description.trim()) {
       toast({
-        title: "Créditos insuficientes",
-        description: "Você não possui créditos suficientes para gerar contratos avançados.",
+        title: "Campos obrigatórios",
+        description: "Por favor, preencha o título e a descrição do contrato.",
         variant: "destructive",
       })
       return
+    }
+
+    // Verificar créditos apenas se não for demo
+    if (!isDemo) {
+      if (contractType === "simple" && !canGenerateSimple) {
+        toast({
+          title: "Créditos insuficientes",
+          description: "Você não possui créditos suficientes para gerar contratos simples.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (contractType === "advanced" && !canGenerateAdvanced) {
+        toast({
+          title: "Créditos insuficientes",
+          description: "Você não possui créditos suficientes para gerar contratos avançados.",
+          variant: "destructive",
+        })
+        return
+      }
     }
 
     setGenerating(true)
+    setCacheHit(false)
+    setLexmlData(null)
 
     try {
-      // Simular geração de contrato (aqui você integraria com a API da OpenAI)
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+      // 1. Gerar hash para cache
+      const cacheKey = crypto
+        .createHash("md5")
+        .update(
+          `${title}-${description}-${contractType}-${temperature}-${maxTokens}-${customPrompt}-${JSON.stringify(fieldMetadata)}`,
+        )
+        .digest("hex")
 
-      const mockContent = `
-# CONTRATO DE PRESTAÇÃO DE SERVIÇOS
+      // 2. Verificar cache
+      const cacheResponse = await fetch("/api/check-cache", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cacheKey,
+          prompt: `${title}\n\n${description}`,
+          contractType,
+          temperature,
+          maxTokens,
+        }),
+      })
 
-**Partes:**
-- CONTRATANTE: [Nome do Contratante]
-- CONTRATADO: [Nome do Contratado]
+      if (cacheResponse.ok) {
+        const cacheData = await cacheResponse.json()
+        if (cacheData.found) {
+          setGeneratedContent(cacheData.content)
+          setCacheHit(true)
+          setShowPreview(true)
+          toast({
+            title: "Contrato salvo em cache!",
+            description: "Encontramos um contrato similar já gerado.",
+          })
+          return
+        }
+      }
 
-**Objeto:**
-${description}
+      // 3. Consultar LexML se habilitado
+      if (includeLexML) {
+        try {
+          const lexmlResponse = await fetch("/api/lexml-search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: `${title} ${description}` }),
+          })
 
-**Cláusulas:**
+          if (lexmlResponse.ok) {
+            const lexmlResult = await lexmlResponse.json()
+            if (lexmlResult.laws && lexmlResult.laws.length > 0) {
+              setLexmlData(lexmlResult)
+            }
+          }
+        } catch (error) {
+          console.warn("LexML indisponível:", error)
+          toast({
+            title: "Consulta LexML indisponível",
+            description: "Prosseguindo sem consulta legal automática.",
+            variant: "default",
+          })
+        }
+      }
 
-1. **DO OBJETO**: O presente contrato tem por objeto ${description.toLowerCase()}.
+      // 4. Gerar contrato via API
+      const generateResponse = await fetch("/api/generate-contract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          prompt: description,
+          contractType,
+          temperature,
+          maxTokens,
+          customPrompt,
+          lexmlData,
+          fieldMetadata,
+          cacheKey,
+        }),
+      })
 
-2. **DAS OBRIGAÇÕES**: O CONTRATADO se obriga a prestar os serviços descritos no objeto deste contrato.
+      const result = await generateResponse.json()
 
-3. **DO PRAZO**: O presente contrato terá vigência de [prazo] a partir da data de assinatura.
+      if (!generateResponse.ok) {
+        throw new Error(result.error || "Falha na geração do contrato")
+      }
 
-4. **DO VALOR**: Pelos serviços prestados, o CONTRATANTE pagará ao CONTRATADO o valor de R$ [valor].
+      if (!result.content) {
+        throw new Error("Conteúdo do contrato não foi gerado")
+      }
 
-5. **DO PAGAMENTO**: O pagamento será efetuado [forma de pagamento].
+      setGeneratedContent(result.content)
+      setShowPreview(true)
 
-6. **DAS DISPOSIÇÕES GERAIS**: Este contrato é regido pelas leis brasileiras.
+      // 5. Atualizar créditos se não for demo
+      if (!isDemo && user && subscription) {
+        try {
+          const newCredits =
+            contractType === "simple"
+              ? { creditos_simples: subscription.creditos_simples - 1 }
+              : { creditos_avancados: subscription.creditos_avancados - 1 }
 
-Local e data: ________________
+          const { error: updateError } = await supabase.from("subscriptions").update(newCredits).eq("user_id", user.id)
 
-_________________________        _________________________
-    CONTRATANTE                      CONTRATADO
-      `
-
-      setGeneratedContent(mockContent)
-      setContractName(`Contrato ${type} - ${new Date().toLocaleDateString("pt-BR")}`)
-
-      if (!isDemo && user) {
-        // Atualizar créditos apenas se não estiver em modo demo
-        const newCredits =
-          type === "simples"
-            ? { creditos_simples: subscription!.creditos_simples - 1 }
-            : { creditos_avancados: subscription!.creditos_avancados - 1 }
-
-        await supabase.from("subscriptions").update(newCredits).eq("user_id", user.id)
-        await refreshProfile()
+          if (!updateError) {
+            await refreshProfile()
+          }
+        } catch (creditError) {
+          console.warn("Erro ao atualizar créditos:", creditError)
+        }
       }
 
       toast({
         title: "Contrato gerado com sucesso!",
-        description: `Seu contrato ${type} foi gerado. Você pode salvá-lo agora.`,
+        description: `Seu contrato "${title}" foi gerado e está pronto para revisão.`,
       })
     } catch (error) {
+      console.error("Erro na geração:", error)
       toast({
         title: "Erro ao gerar contrato",
-        description: "Ocorreu um erro ao gerar o contrato. Tente novamente.",
+        description: error instanceof Error ? error.message : "Ocorreu um erro inesperado. Tente novamente.",
         variant: "destructive",
       })
     } finally {
@@ -112,183 +207,122 @@ _________________________        _________________________
     }
   }
 
-  const saveContract = async () => {
-    if (!user && !isDemo) return
-    if (!generatedContent) return
-
-    setSaving(true)
-
+  const handleExport = async (format: "pdf" | "word") => {
     try {
-      if (!isDemo && user) {
-        const { error } = await supabase.from("contracts").insert({
-          user_id: user.id,
-          nome: contractName,
-          descricao: description,
-          tipo: "simples", // Você pode determinar isso baseado no tipo gerado
-          conteudo: generatedContent,
-        })
+      const response = await fetch("/api/export-contract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          content: generatedContent,
+          format,
+          contractType,
+          isDemo,
+        }),
+      })
 
-        if (error) throw error
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Falha na exportação")
       }
 
-      toast({
-        title: "Contrato salvo!",
-        description: isDemo ? "Contrato salvo no modo demonstração." : "Seu contrato foi salvo com sucesso.",
-      })
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${title.replace(/[^a-zA-Z0-9]/g, "_")}-${Date.now()}.${format === "pdf" ? "pdf" : "docx"}`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
 
-      // Limpar formulário
-      setDescription("")
-      setGeneratedContent("")
-      setContractName("")
-    } catch (error) {
       toast({
-        title: "Erro ao salvar",
-        description: "Ocorreu um erro ao salvar o contrato.",
+        title: `Contrato exportado em ${format.toUpperCase()}!`,
+        description: "O download foi iniciado automaticamente.",
+      })
+    } catch (error) {
+      console.error("Erro na exportação:", error)
+      toast({
+        title: "Erro na exportação",
+        description: error instanceof Error ? error.message : "Não foi possível exportar o contrato.",
         variant: "destructive",
       })
-    } finally {
-      setSaving(false)
     }
+  }
+
+  const handleTitleSave = async (newTitle: string) => {
+    setTitle(newTitle)
+    toast({
+      title: "Título atualizado!",
+      description: "O título do contrato foi atualizado com sucesso.",
+    })
   }
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
+        {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Gerador de Contratos</h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Descreva o contrato que você precisa e nossa IA criará um documento completo
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Gerador de Contratos IA</h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-2">
+            Crie contratos profissionais com inteligência artificial especializada em direito brasileiro
           </p>
         </div>
 
-        {/* Credits Display */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Sparkles className="h-4 w-4 text-primary-600" />
-                Créditos Simples
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{subscription?.creditos_simples || 0}</div>
-              <p className="text-xs text-muted-foreground">CONTRATO TURBO disponíveis</p>
-            </CardContent>
-          </Card>
+        {/* Seletor de Tipo */}
+        <ContractTypeSelector
+          selectedType={contractType}
+          onTypeChange={setContractType}
+          simpleCredits={subscription?.creditos_simples || 0}
+          advancedCredits={subscription?.creditos_avancados || 0}
+          disabled={generating}
+        />
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Zap className="h-4 w-4 text-secondary-600" />
-                Créditos Avançados
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{subscription?.creditos_avancados || 0}</div>
-              <p className="text-xs text-muted-foreground">CONTRATO AVANÇADO disponíveis</p>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Formulário Principal */}
+        <ContractForm
+          title={title}
+          onTitleChange={setTitle}
+          description={description}
+          onDescriptionChange={setDescription}
+          onGenerate={generateContract}
+          generating={generating}
+          contractType={contractType}
+          disabled={!canGenerateSimple && !canGenerateAdvanced && !isDemo}
+          userPlan={subscription?.plano || "Demo"}
+        />
 
-        {/* Generator Form */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Descreva seu contrato</CardTitle>
-            <CardDescription>
-              Seja específico sobre o tipo de contrato, partes envolvidas, valores e condições
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="description">Descrição do contrato</Label>
-              <Textarea
-                id="description"
-                placeholder="Ex: Preciso de um contrato de prestação de serviços de consultoria em marketing digital para uma empresa de tecnologia, com duração de 6 meses, valor mensal de R$ 5.000,00..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="min-h-[120px] mt-1"
-                disabled={generating}
-              />
-            </div>
+        {/* Configurações Avançadas */}
+        <AdvancedSettings
+          temperature={temperature}
+          onTemperatureChange={setTemperature}
+          maxTokens={maxTokens}
+          onMaxTokensChange={setMaxTokens}
+          includeLexML={includeLexML}
+          onIncludeLexMLChange={setIncludeLexML}
+          customPrompt={customPrompt}
+          onCustomPromptChange={setCustomPrompt}
+          contractType={contractType}
+          onMetadataChange={setFieldMetadata}
+        />
 
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Button
-                onClick={() => generateContract("simples")}
-                disabled={generating || !description.trim() || (!canGenerateSimple && !isDemo)}
-                className="flex-1 bg-primary-600 hover:bg-primary-700"
-              >
-                {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                Gerar Simples (1 crédito)
-              </Button>
-
-              <Button
-                onClick={() => generateContract("avancado")}
-                disabled={generating || !description.trim() || (!canGenerateAdvanced && !isDemo)}
-                variant="outline"
-                className="flex-1 border-secondary-600 text-secondary-600 hover:bg-secondary-50"
-              >
-                {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
-                Gerar Avançado (1 crédito)
-              </Button>
-            </div>
-
-            {!canGenerateSimple && !canGenerateAdvanced && !isDemo && (
-              <Alert className="border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-900/20">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription className="text-orange-800 dark:text-orange-200">
-                  Você não possui créditos suficientes. Atualize seu plano para continuar gerando contratos.
-                </AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Generated Content */}
-        {generatedContent && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                Contrato Gerado
-                <Badge variant="secondary">Pronto para salvar</Badge>
-              </CardTitle>
-              <CardDescription>Revise o contrato gerado e salve-o em suas exportações</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="contract-name">Nome do contrato</Label>
-                <input
-                  id="contract-name"
-                  type="text"
-                  value={contractName}
-                  onChange={(e) => setContractName(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
-                  placeholder="Nome para identificar este contrato"
-                />
-              </div>
-
-              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-h-96 overflow-y-auto">
-                <pre className="whitespace-pre-wrap text-sm text-gray-900 dark:text-gray-100">{generatedContent}</pre>
-              </div>
-
-              <Button
-                onClick={saveContract}
-                disabled={saving || !contractName.trim()}
-                className="w-full bg-secondary-600 hover:bg-secondary-700"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Salvar Contrato
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
+        {/* Modal de Preview */}
+        {showPreview && (
+          <ContractPreviewModal
+            content={generatedContent}
+            title={title}
+            isOpen={showPreview}
+            onClose={() => setShowPreview(false)}
+            onExport={handleExport}
+            onEditInput={() => {
+              setShowPreview(false)
+              setGeneratedContent("")
+            }}
+            onTitleSave={handleTitleSave}
+            contractType={contractType}
+            cacheHit={cacheHit}
+            lexmlData={lexmlData}
+            isDemo={isDemo}
+          />
         )}
       </div>
     </DashboardLayout>

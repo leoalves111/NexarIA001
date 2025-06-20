@@ -15,41 +15,44 @@ export default function StatusCard({ title, value, subtitle, icon: Icon, variant
   const getVariantStyles = () => {
     switch (variant) {
       case "primary":
-        return "border-primary-200 bg-primary-50 dark:border-primary-800 dark:bg-primary-900/20"
+        return "border-l-4 border-indigo-300 bg-white dark:bg-gray-800"
       case "success":
-        return "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
+        return "border-l-4 border-green-300 bg-white dark:bg-gray-800"
       case "warning":
-        return "border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-900/20"
+        return "border-l-4 border-purple-300 bg-white dark:bg-gray-800"
       case "danger":
-        return "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
+        return "border-l-4 border-green-300 bg-white dark:bg-gray-800"
       default:
-        return "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+        return "border-l-4 border-green-300 bg-white dark:bg-gray-800"
     }
   }
 
   const getIconStyles = () => {
     switch (variant) {
       case "primary":
-        return "text-primary-600 dark:text-primary-400"
+        return "text-indigo-600 dark:text-indigo-400"
       case "success":
         return "text-green-600 dark:text-green-400"
       case "warning":
-        return "text-orange-600 dark:text-orange-400"
+        return "text-purple-600 dark:text-purple-400"
       case "danger":
-        return "text-red-600 dark:text-red-400"
+        return "text-green-600 dark:text-green-400"
       default:
-        return "text-gray-600 dark:text-gray-400"
+        return "text-green-600 dark:text-green-400"
     }
   }
 
   return (
     <Card
       className={`
-      ${getVariantStyles()}
-      hover:shadow-lg transition-all duration-200 
-      hover:-translate-y-1 cursor-pointer
-      border-2
-    `}
+        dashboard-card
+        ${getVariantStyles()}
+        rounded-xl
+        border-gray-200 dark:border-gray-700
+        transition-all duration-200
+        hover:shadow-lg hover:-translate-y-1
+        cursor-pointer
+      `}
     >
       <CardContent className="p-6">
         <div className="flex items-start justify-between">
