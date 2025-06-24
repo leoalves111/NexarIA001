@@ -8,6 +8,7 @@ import ContractTypeSelector from "@/components/generator/contract-type-selector"
 import ContractForm from "@/components/generator/contract-form"
 import AdvancedSettings from "@/components/generator/advanced-settings"
 import ContractPreviewModal from "@/components/generator/contract-preview-modal"
+import ContractTemplateSelector from "@/components/generator/contract-template-selector"
 import { supabase } from "@/lib/supabase"
 import crypto from "crypto"
 
@@ -25,11 +26,13 @@ export default function GeneratorPage() {
   const [maxTokens, setMaxTokens] = useState(3500)
   const [includeLexML, setIncludeLexML] = useState(true)
   const [customPrompt, setCustomPrompt] = useState("")
-  const [fieldMetadata, setFieldMetadata] = useState<any>({})
+  const [advancedConfig, setAdvancedConfig] = useState<any>({})
 
   // Estados de integração
   const [lexmlData, setLexmlData] = useState<any>(null)
   const [cacheHit, setCacheHit] = useState(false)
+
+  const [selectedTemplate, setSelectedTemplate] = useState("classic")
 
   const { user, subscription, refreshProfile, isDemo } = useAuth()
   const { toast } = useToast()
@@ -87,7 +90,7 @@ export default function GeneratorPage() {
       const cacheKey = crypto
         .createHash("md5")
         .update(
-          `${title}-${description}-${contractType}-${temperature}-${maxTokens}-${customPrompt}-${JSON.stringify(fieldMetadata)}`,
+          `${title}-${description}-${contractType}-${temperature}-${maxTokens}-${customPrompt}-${JSON.stringify(advancedConfig)}`,
         )
         .digest("hex")
 
@@ -97,7 +100,9 @@ export default function GeneratorPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cacheKey,
-          prompt: `${title}\n\n${description}`,
+          prompt: `${title}
+
+${description}`,
           contractType,
           temperature,
           maxTokens,
@@ -119,12 +124,15 @@ export default function GeneratorPage() {
       }
 
       // 3. Consultar LexML se habilitado
-      if (includeLexML) {
+      if (includeLexML || advancedConfig.enhancedLexML) {
         try {
           const lexmlResponse = await fetch("/api/lexml-search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query: `${title} ${description}` }),
+            body: JSON.stringify({
+              query: `${title} ${description}`,
+              enhanced: advancedConfig.enhancedLexML,
+            }),
           })
 
           if (lexmlResponse.ok) {
@@ -155,8 +163,10 @@ export default function GeneratorPage() {
           maxTokens,
           customPrompt,
           lexmlData,
-          fieldMetadata,
           cacheKey,
+          template: selectedTemplate,
+          // Configurações avançadas
+          ...advancedConfig,
         }),
       })
 
@@ -226,13 +236,20 @@ export default function GeneratorPage() {
         throw new Error(error.error || "Falha na exportação")
       }
 
+      // Criar blob e fazer download direto
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
+      a.style.display = "none"
       a.href = url
-      a.download = `${title.replace(/[^a-zA-Z0-9]/g, "_")}-${Date.now()}.${format === "pdf" ? "pdf" : "docx"}`
+
+      const filename = title.replace(/[^a-zA-Z0-9\s\-_]/g, "").replace(/\s+/g, "_")
+      a.download = `${filename}.${format === "pdf" ? "html" : "doc"}`
+
       document.body.appendChild(a)
       a.click()
+
+      // Cleanup
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
 
@@ -278,6 +295,13 @@ export default function GeneratorPage() {
           disabled={generating}
         />
 
+        {/* Seletor de Template */}
+        <ContractTemplateSelector
+          selectedTemplate={selectedTemplate}
+          onTemplateChange={setSelectedTemplate}
+          disabled={generating}
+        />
+
         {/* Formulário Principal */}
         <ContractForm
           title={title}
@@ -302,7 +326,7 @@ export default function GeneratorPage() {
           customPrompt={customPrompt}
           onCustomPromptChange={setCustomPrompt}
           contractType={contractType}
-          onMetadataChange={setFieldMetadata}
+          onMetadataChange={setAdvancedConfig}
         />
 
         {/* Modal de Preview */}

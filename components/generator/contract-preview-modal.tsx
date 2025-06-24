@@ -8,7 +8,20 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { FileText, Download, Edit3, Clock, Database, Scale, AlertTriangle, CheckCircle, Save, X } from "lucide-react"
+import {
+  FileText,
+  Download,
+  Edit3,
+  Clock,
+  Database,
+  Scale,
+  AlertTriangle,
+  CheckCircle,
+  Save,
+  X,
+  Lock,
+} from "lucide-react"
+import { useSubscription } from "@/hooks/use-subscription"
 
 interface ContractPreviewModalProps {
   content: string
@@ -40,8 +53,14 @@ export default function ContractPreviewModal({
   const [exporting, setExporting] = useState<"pdf" | "word" | null>(null)
   const [editingTitle, setEditingTitle] = useState(false)
   const [newTitle, setNewTitle] = useState(title)
+  const { subscription, isFreePlan } = useSubscription()
 
   const handleExport = async (format: "pdf" | "word") => {
+    // Block Word export for free plans
+    if (format === "word" && isFreePlan) {
+      return
+    }
+
     setExporting(format)
     try {
       await onExport(format)
@@ -60,6 +79,38 @@ export default function ContractPreviewModal({
   const handleTitleCancel = () => {
     setNewTitle(title)
     setEditingTitle(false)
+  }
+
+  // Clean content for display (remove AI-generated titles and disclaimers)
+  const cleanContent = content
+    .replace(/^#\s*CONTRATO\s+(SIMPLES|AVANÇADO|DE\s+\w+)/gim, "") // Remove AI titles
+    .replace(/\*\*Aviso Legal:.*?\*\*/gis, "") // Remove legal disclaimers
+    .replace(/Documento gerado por.*?profissional\./gis, "") // Remove AI disclaimers
+    .replace(/Gerado em:.*?Contrato\s+(Simples|Avançado)/gis, "") // Remove generation info
+    .replace(/Para salvar como PDF:.*/gis, "") // Remove PDF instructions
+    .trim()
+
+  // Limpar e extrair apenas o corpo do HTML para preview
+  const extractBodyContent = (htmlContent: string): string => {
+    // Extrair apenas o conteúdo dentro do <body>
+    const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+    if (bodyMatch) {
+      return bodyMatch[1]
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "") // Remove scripts
+        .replace(/position:\s*fixed[^;]*;[^}]*}/gi, "") // Remove marca d'água do preview
+        .trim()
+    }
+
+    // Se não encontrar body, retorna o conteúdo limpo
+    return htmlContent
+      .replace(/<\/?html[^>]*>/gi, "")
+      .replace(/<\/?head[^>]*>/gi, "")
+      .replace(/<\/?body[^>]*>/gi, "")
+      .replace(/<title[^>]*>[\s\S]*?<\/title>/gi, "")
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/position:\s*fixed[^;]*;[^}]*}/gi, "")
+      .trim()
   }
 
   return (
@@ -116,6 +167,11 @@ export default function ContractPreviewModal({
                       Demo
                     </Badge>
                   )}
+                  {isFreePlan && (
+                    <Badge variant="outline" className="text-purple-600 border-purple-200">
+                      Plano Gratuito
+                    </Badge>
+                  )}
                 </div>
               </div>
             </div>
@@ -145,67 +201,43 @@ export default function ContractPreviewModal({
         )}
 
         {/* Conteúdo do contrato */}
-        <div className="flex-1 px-6">
+        <div className="flex-1 px-6 relative">
+          {/* Marca d'água para planos gratuitos */}
+          {isFreePlan && (
+            <div
+              className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
+              style={{
+                transform: "rotate(-45deg)",
+                fontSize: "72px",
+                color: "rgba(184, 134, 11, 0.1)",
+                fontWeight: "bold",
+                userSelect: "none",
+              }}
+            >
+              NEXAR IA
+            </div>
+          )}
+
           <ScrollArea className="h-[500px] w-full">
             <div className="contract-preview bg-white dark:bg-gray-900 p-8 rounded-lg border shadow-sm">
+              {/* Renderizar HTML diretamente */}
               <div
-                className="prose prose-sm max-w-none dark:prose-invert"
+                className="contract-content"
                 style={{
-                  fontFamily: 'Georgia, "Times New Roman", serif',
-                  lineHeight: "1.8",
-                  fontSize: "14px",
+                  fontFamily: "Times New Roman, serif",
+                  fontSize: "12pt",
+                  lineHeight: "1.4",
+                  color: "#000",
                 }}
-              >
-                <div className="whitespace-pre-wrap font-serif text-gray-900 dark:text-gray-100">
-                  {content.split("\n").map((line, index) => {
-                    if (line.startsWith("# ")) {
-                      return (
-                        <h1 key={index} className="text-xl font-bold text-center mb-6 text-gray-900 dark:text-gray-100">
-                          {line.replace("# ", "")}
-                        </h1>
-                      )
-                    }
-                    if (line.startsWith("## ")) {
-                      return (
-                        <h2 key={index} className="text-lg font-semibold mt-6 mb-3 text-gray-900 dark:text-gray-100">
-                          {line.replace("## ", "")}
-                        </h2>
-                      )
-                    }
-                    if (line.startsWith("**") && line.endsWith("**")) {
-                      return (
-                        <p key={index} className="font-semibold mb-2 text-gray-900 dark:text-gray-100">
-                          {line.replace(/\*\*/g, "")}
-                        </p>
-                      )
-                    }
-                    return (
-                      <p key={index} className="mb-2 text-gray-800 dark:text-gray-200">
-                        {line}
-                      </p>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Rodapé do documento */}
-              <div className="mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                  {isDemo && (
-                    <div className="mb-2 text-orange-600 font-medium">⚠️ NEXAR IA DEMO - Documento de demonstração</div>
-                  )}
-                  <div>Documento gerado por NEXAR IA – não substitui orientação jurídica profissional.</div>
-                  <div className="mt-1">
-                    Gerado em: {new Date().toLocaleString("pt-BR")} • Tipo:{" "}
-                    {contractType === "simple" ? "Contrato Simples" : "Contrato Avançado"}
-                  </div>
-                </div>
-              </div>
+                dangerouslySetInnerHTML={{
+                  __html: extractBodyContent(content),
+                }}
+              />
             </div>
           </ScrollArea>
         </div>
 
-        {/* Disclaimer */}
+        {/* Disclaimer apenas no preview, não no PDF */}
         <div className="px-6">
           <Alert className="border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20">
             <AlertTriangle className="h-4 w-4 text-yellow-600" />
@@ -244,9 +276,13 @@ export default function ContractPreviewModal({
 
             <Button
               onClick={() => handleExport("word")}
-              disabled={exporting !== null}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+              disabled={exporting !== null || isFreePlan}
+              className={`flex-1 ${
+                isFreePlan ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
+              } text-white`}
+              title={isFreePlan ? "Disponível apenas em planos pagos" : ""}
             >
+              {isFreePlan && <Lock className="mr-2 h-4 w-4" />}
               {exporting === "word" ? (
                 <>
                   <Clock className="mr-2 h-4 w-4 animate-spin" />
@@ -255,11 +291,17 @@ export default function ContractPreviewModal({
               ) : (
                 <>
                   <Download className="mr-2 h-4 w-4" />
-                  Exportar Word
+                  Exportar Word {isFreePlan && "(Premium)"}
                 </>
               )}
             </Button>
           </div>
+
+          {isFreePlan && (
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              💡 Upgrade para Premium para exportar em Word e remover marca d'água
+            </p>
+          )}
         </div>
       </DialogContent>
     </Dialog>

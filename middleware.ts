@@ -7,11 +7,38 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
 
   try {
+    // Check if Supabase is configured
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    const isConfigured = !!(
+      supabaseUrl &&
+      supabaseAnonKey &&
+      supabaseUrl !== "your-supabase-url" &&
+      supabaseAnonKey !== "your-supabase-anon-key" &&
+      supabaseUrl.startsWith("https://") &&
+      supabaseAnonKey.length > 20
+    )
+
+    // If not configured, allow all routes (demo mode)
+    if (!isConfigured) {
+      return res
+    }
+
     const supabase = createMiddlewareClient<Database>({ req, res })
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
+    // Get session with timeout to prevent hanging
+    const sessionPromise = supabase.auth.getSession()
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Session timeout")), 5000))
+
+    let session = null
+    try {
+      const result = (await Promise.race([sessionPromise, timeoutPromise])) as any
+      session = result?.data?.session
+    } catch (error) {
+      console.warn("Session check failed, allowing access:", error)
+      return res
+    }
 
     // Protected routes
     const protectedRoutes = ["/dashboard", "/profile", "/generator", "/templates", "/exports", "/subscription"]
@@ -32,7 +59,7 @@ export async function middleware(req: NextRequest) {
 
     return res
   } catch (error) {
-    console.error("Middleware error:", error)
+    console.warn("Middleware error, allowing access:", error)
     return res
   }
 }

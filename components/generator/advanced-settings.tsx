@@ -9,11 +9,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ChevronDown, Settings, Info, Scale, Plus, Trash2, Save, RotateCcw, Eye } from "lucide-react"
+import { ChevronDown, Settings, Info, Scale, Plus, Trash2, Save, RotateCcw, Eye, MessageSquare } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { useAuth } from "@/hooks/useAuth"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
+import { Switch } from "@/components/ui/switch"
 
 interface CustomField {
   id: string
@@ -36,6 +37,48 @@ interface FieldPreset {
   sections: FieldSection[]
   user_id?: string
 }
+
+interface LanguageStyle {
+  id: string
+  name: string
+  description: string
+  prompt: string
+}
+
+const LANGUAGE_STYLES: LanguageStyle[] = [
+  {
+    id: "professional",
+    name: "Profissional",
+    description: "Linguagem jurídica técnica e formal",
+    prompt:
+      "Use linguagem jurídica profissional, técnica e formal, adequada para advogados e profissionais do direito.",
+  },
+  {
+    id: "balanced",
+    name: "Equilibrado",
+    description: "Linguagem clara mas juridicamente precisa",
+    prompt: "Use linguagem jurídica clara e acessível, mantendo precisão técnica sem ser excessivamente complexa.",
+  },
+  {
+    id: "accessible",
+    name: "Para Leigos",
+    description: "Linguagem simples e fácil de entender",
+    prompt:
+      "Use linguagem simples e acessível, explicando termos jurídicos quando necessário, para facilitar compreensão de pessoas sem formação jurídica.",
+  },
+  {
+    id: "ultra_legal",
+    name: "Super Jurídico",
+    description: "Linguagem altamente técnica e especializada",
+    prompt: "Use linguagem jurídica altamente técnica, especializada e rigorosa, com terminologia avançada do direito.",
+  },
+  {
+    id: "business",
+    name: "Empresarial",
+    description: "Linguagem corporativa e comercial",
+    prompt: "Use linguagem empresarial e comercial, focada em aspectos de negócios e relações corporativas.",
+  },
+]
 
 interface AdvancedSettingsProps {
   temperature: number
@@ -108,6 +151,26 @@ export default function AdvancedSettings({
   const [newPresetName, setNewPresetName] = useState("")
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
 
+  // Novas configurações
+  const [languageStyle, setLanguageStyle] = useState("balanced")
+  const [enhancedLexML, setEnhancedLexML] = useState(false)
+  const [contractRefinements, setContractRefinements] = useState({
+    includePerformanceMetrics: false,
+    includeForceClause: false,
+    includeArbitrationClause: false,
+    includeDataProtection: false,
+    includeIntellectualProperty: false,
+    includeNonCompete: false,
+  })
+
+  const [sectionToggles, setSectionToggles] = useState({
+    contratante: true,
+    contratado: true,
+    fiador: false,
+    testemunhas: false,
+  })
+  const [includeLegalNumbers, setIncludeLegalNumbers] = useState(true)
+
   const { user, isDemo } = useAuth()
   const { toast } = useToast()
 
@@ -129,9 +192,26 @@ export default function AdvancedSettings({
         maxTokens,
         includeLexML,
         customPrompt,
+        languageStyle,
+        enhancedLexML,
+        contractRefinements,
+        sectionToggles,
+        includeLegalNumbers,
       }),
     )
-  }, [sections, currentPreset, temperature, maxTokens, includeLexML, customPrompt])
+  }, [
+    sections,
+    currentPreset,
+    temperature,
+    maxTokens,
+    includeLexML,
+    customPrompt,
+    languageStyle,
+    enhancedLexML,
+    contractRefinements,
+    sectionToggles,
+    includeLegalNumbers,
+  ])
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -141,6 +221,11 @@ export default function AdvancedSettings({
         const data = JSON.parse(saved)
         if (data.sections) setSections(data.sections)
         if (data.currentPreset) setCurrentPreset(data.currentPreset)
+        if (data.languageStyle) setLanguageStyle(data.languageStyle)
+        if (data.enhancedLexML !== undefined) setEnhancedLexML(data.enhancedLexML)
+        if (data.contractRefinements) setContractRefinements(data.contractRefinements)
+        if (data.sectionToggles) setSectionToggles(data.sectionToggles)
+        if (data.includeLegalNumbers !== undefined) setIncludeLegalNumbers(data.includeLegalNumbers)
       } catch (error) {
         console.warn("Erro ao carregar configurações salvas:", error)
       }
@@ -150,8 +235,26 @@ export default function AdvancedSettings({
   // Generate metadata whenever sections change
   useEffect(() => {
     const metadata = generateMetadata()
-    onMetadataChange?.(metadata)
-  }, [sections])
+    const advancedConfig = {
+      fieldMetadata: metadata,
+      sectionToggles,
+      includeLegalNumbers,
+      languageStyle,
+      languagePrompt: LANGUAGE_STYLES.find((s) => s.id === languageStyle)?.prompt || "",
+      enhancedLexML,
+      contractRefinements,
+      advancedFieldsEnabled: true,
+    }
+    onMetadataChange?.(advancedConfig)
+  }, [
+    sections,
+    sectionToggles,
+    includeLegalNumbers,
+    languageStyle,
+    enhancedLexML,
+    contractRefinements,
+    onMetadataChange,
+  ])
 
   const loadUserPresets = async () => {
     try {
@@ -301,6 +404,13 @@ export default function AdvancedSettings({
   const maxTokensLimit = 5000
   const minTokens = 500
 
+  const toggleSection = (sectionName: string) => {
+    setSectionToggles((prev) => ({
+      ...prev,
+      [sectionName.toLowerCase()]: !prev[sectionName.toLowerCase()],
+    }))
+  }
+
   return (
     <Card className="border-gray-200 dark:border-gray-700">
       <CardHeader
@@ -320,7 +430,34 @@ export default function AdvancedSettings({
 
       {isOpen && (
         <CardContent className="pt-0 space-y-6 animate-in slide-in-from-top-2 duration-200">
-          {/* Todo o conteúdo das configurações permanece igual */}
+          {/* Tipo de Linguagem do Contrato */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-purple-600" />
+              <Label className="text-sm font-medium">Tipo de Linguagem do Contrato</Label>
+            </div>
+
+            <Select value={languageStyle} onValueChange={setLanguageStyle}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Selecione o tipo de linguagem" />
+              </SelectTrigger>
+              <SelectContent>
+                {LANGUAGE_STYLES.map((style) => (
+                  <SelectItem key={style.id} value={style.id}>
+                    <div className="flex flex-col">
+                      <span className="font-medium">{style.name}</span>
+                      <span className="text-xs text-gray-500">{style.description}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <div className="text-xs text-gray-600 bg-purple-50 p-3 rounded-lg">
+              <strong>Selecionado:</strong> {LANGUAGE_STYLES.find((s) => s.id === languageStyle)?.description}
+            </div>
+          </div>
+
           {/* Preset Selection */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">Preset de Campos</Label>
@@ -397,92 +534,122 @@ export default function AdvancedSettings({
 
           {/* Dynamic Field Sections */}
           <div className="space-y-4">
-            {sections.map((section, sectionIndex) => (
-              <div key={section.name} className="border rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-medium text-gray-900 dark:text-white">{section.name}</h4>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => addField(sectionIndex)}
-                    className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Adicionar Campo
-                  </Button>
-                </div>
+            {sections.map((section, sectionIndex) => {
+              const sectionKey = section.name.toLowerCase()
+              const isActive = sectionToggles[sectionKey] !== false
 
-                <div className="space-y-3">
-                  {section.fields.map((field, fieldIndex) => (
-                    <div key={field.id} className="grid grid-cols-12 gap-2 items-end">
-                      <div className="col-span-3">
-                        <Label className="text-xs">Label</Label>
-                        <Input
-                          value={field.label}
-                          onChange={(e) => updateField(sectionIndex, fieldIndex, { label: e.target.value })}
-                          className="text-sm"
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <Label className="text-xs">Tipo</Label>
-                        <Select
-                          value={field.type}
-                          onValueChange={(value: any) => updateField(sectionIndex, fieldIndex, { type: value })}
-                        >
-                          <SelectTrigger className="text-sm">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="text">Texto</SelectItem>
-                            <SelectItem value="number">Número</SelectItem>
-                            <SelectItem value="date">Data</SelectItem>
-                            <SelectItem value="select">Select</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="col-span-3">
-                        <Label className="text-xs">Valor</Label>
-                        <Input
-                          type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
-                          value={field.value}
-                          onChange={(e) => updateField(sectionIndex, fieldIndex, { value: e.target.value })}
-                          placeholder={field.placeholder}
-                          className={`text-sm ${validationErrors[field.id] ? "border-red-500" : ""}`}
-                        />
-                        {validationErrors[field.id] && (
-                          <p className="text-xs text-red-500 mt-1">{validationErrors[field.id]}</p>
-                        )}
-                      </div>
-                      <div className="col-span-2">
-                        <Label className="text-xs">Placeholder</Label>
-                        <Input
-                          value={field.placeholder}
-                          onChange={(e) => updateField(sectionIndex, fieldIndex, { placeholder: e.target.value })}
-                          className="text-sm"
-                        />
-                      </div>
-                      <div className="col-span-1 flex items-center">
-                        <Checkbox
-                          checked={field.required}
-                          onCheckedChange={(checked) => updateField(sectionIndex, fieldIndex, { required: !!checked })}
-                        />
-                        <Label className="text-xs ml-1">Obr.</Label>
-                      </div>
-                      <div className="col-span-1 flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeField(sectionIndex, fieldIndex)}
-                          className="text-red-500 hover:text-red-700 p-1"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+              return (
+                <div
+                  key={section.name}
+                  className={`border rounded-lg p-4 space-y-3 ${!isActive ? "opacity-50 bg-gray-50" : ""}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        checked={isActive}
+                        onCheckedChange={() => toggleSection(section.name)}
+                        className="data-[state=checked]:bg-green-600"
+                      />
+                      <h4 className="font-medium text-gray-900 dark:text-white">{section.name}</h4>
+                      <div className="text-xs text-gray-500">
+                        {isActive ? "Usar campos específicos" : "Usar apenas prompt"}
                       </div>
                     </div>
-                  ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => addField(sectionIndex)}
+                      disabled={!isActive}
+                      className="text-indigo-600 border-indigo-200 hover:bg-indigo-50 disabled:opacity-50"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Adicionar Campo
+                    </Button>
+                  </div>
+
+                  {isActive && (
+                    <div className="space-y-3">
+                      {section.fields.map((field, fieldIndex) => (
+                        <div key={field.id} className="grid grid-cols-12 gap-2 items-end">
+                          <div className="col-span-3">
+                            <Label className="text-xs">Label</Label>
+                            <Input
+                              value={field.label}
+                              onChange={(e) => updateField(sectionIndex, fieldIndex, { label: e.target.value })}
+                              className="text-sm"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <Label className="text-xs">Tipo</Label>
+                            <Select
+                              value={field.type}
+                              onValueChange={(value: any) => updateField(sectionIndex, fieldIndex, { type: value })}
+                            >
+                              <SelectTrigger className="text-sm">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="text">Texto</SelectItem>
+                                <SelectItem value="number">Número</SelectItem>
+                                <SelectItem value="date">Data</SelectItem>
+                                <SelectItem value="select">Select</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="col-span-3">
+                            <Label className="text-xs">Valor</Label>
+                            <Input
+                              type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+                              value={field.value}
+                              onChange={(e) => updateField(sectionIndex, fieldIndex, { value: e.target.value })}
+                              placeholder={field.placeholder}
+                              className={`text-sm ${validationErrors[field.id] ? "border-red-500" : ""}`}
+                            />
+                            {validationErrors[field.id] && (
+                              <p className="text-xs text-red-500 mt-1">{validationErrors[field.id]}</p>
+                            )}
+                          </div>
+                          <div className="col-span-2">
+                            <Label className="text-xs">Placeholder</Label>
+                            <Input
+                              value={field.placeholder}
+                              onChange={(e) => updateField(sectionIndex, fieldIndex, { placeholder: e.target.value })}
+                              className="text-sm"
+                            />
+                          </div>
+                          <div className="col-span-1 flex items-center">
+                            <Checkbox
+                              checked={field.required}
+                              onCheckedChange={(checked) =>
+                                updateField(sectionIndex, fieldIndex, { required: !!checked })
+                              }
+                            />
+                            <Label className="text-xs ml-1">Obr.</Label>
+                          </div>
+                          <div className="col-span-1 flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeField(sectionIndex, fieldIndex)}
+                              className="text-red-500 hover:text-red-700 p-1"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {!isActive && (
+                    <div className="text-sm text-gray-600 bg-yellow-50 p-3 rounded-lg">
+                      <strong>Modo Prompt:</strong> Os dados desta seção serão extraídos automaticamente da descrição do
+                      contrato.
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           {/* Temperature Setting */}
@@ -565,9 +732,134 @@ export default function AdvancedSettings({
                 </div>
               </Label>
             </div>
+
+            {/* Enhanced LexML */}
+            <div className="flex items-center space-x-2 ml-6">
+              <Checkbox
+                id="enhancedLexML"
+                checked={enhancedLexML}
+                onCheckedChange={setEnhancedLexML}
+                disabled={!includeLexML}
+                className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+              />
+              <Label htmlFor="enhancedLexML" className="text-sm cursor-pointer">
+                Pesquisa jurídica aprimorada (mais referências)
+              </Label>
+            </div>
+
             <p className="text-xs text-gray-500 ml-6">
               Consulta automática de leis brasileiras relevantes para enriquecer o contrato com base legal sólida.
             </p>
+          </div>
+
+          {/* Controle de Números de Leis */}
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="includeLegalNumbers"
+                checked={includeLegalNumbers}
+                onCheckedChange={setIncludeLegalNumbers}
+                className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+              />
+              <Label htmlFor="includeLegalNumbers" className="text-sm font-medium cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Scale className="h-4 w-4 text-blue-600" />
+                  Incluir números e incisos de leis no contrato
+                </div>
+              </Label>
+            </div>
+
+            <p className="text-xs text-gray-500 ml-6">
+              Quando ativado, inclui referências específicas como "Art. 421 do Código Civil" e incisos detalhados.
+            </p>
+          </div>
+
+          {/* Refinamentos do Contrato */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Settings className="h-5 w-5 text-orange-600" />
+              <Label className="text-sm font-medium">Refinamentos do Contrato</Label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="performance-metrics"
+                  checked={contractRefinements.includePerformanceMetrics}
+                  onCheckedChange={(checked) =>
+                    setContractRefinements((prev) => ({ ...prev, includePerformanceMetrics: checked }))
+                  }
+                />
+                <Label htmlFor="performance-metrics" className="text-sm">
+                  Incluir métricas de performance
+                </Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="force-clause"
+                  checked={contractRefinements.includeForceClause}
+                  onCheckedChange={(checked) =>
+                    setContractRefinements((prev) => ({ ...prev, includeForceClause: checked }))
+                  }
+                />
+                <Label htmlFor="force-clause" className="text-sm">
+                  Cláusula de força maior
+                </Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="arbitration"
+                  checked={contractRefinements.includeArbitrationClause}
+                  onCheckedChange={(checked) =>
+                    setContractRefinements((prev) => ({ ...prev, includeArbitrationClause: checked }))
+                  }
+                />
+                <Label htmlFor="arbitration" className="text-sm">
+                  Cláusula de arbitragem
+                </Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="data-protection"
+                  checked={contractRefinements.includeDataProtection}
+                  onCheckedChange={(checked) =>
+                    setContractRefinements((prev) => ({ ...prev, includeDataProtection: checked }))
+                  }
+                />
+                <Label htmlFor="data-protection" className="text-sm">
+                  Proteção de dados (LGPD)
+                </Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="intellectual-property"
+                  checked={contractRefinements.includeIntellectualProperty}
+                  onCheckedChange={(checked) =>
+                    setContractRefinements((prev) => ({ ...prev, includeIntellectualProperty: checked }))
+                  }
+                />
+                <Label htmlFor="intellectual-property" className="text-sm">
+                  Propriedade intelectual
+                </Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="non-compete"
+                  checked={contractRefinements.includeNonCompete}
+                  onCheckedChange={(checked) =>
+                    setContractRefinements((prev) => ({ ...prev, includeNonCompete: checked }))
+                  }
+                />
+                <Label htmlFor="non-compete" className="text-sm">
+                  Cláusula de não concorrência
+                </Label>
+              </div>
+            </div>
           </div>
 
           {/* Custom Prompt */}
@@ -592,11 +884,20 @@ export default function AdvancedSettings({
           <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border">
             <div className="text-xs text-gray-600 dark:text-gray-400">
               <strong>Configuração {contractType === "simple" ? "Simples" : "Avançada"}:</strong>
-              <br />• Modelo: {contractType === "simple" ? "GPT-3.5-turbo" : "GPT-4o-mini"}
+              <br />• Modelo: {contractType === "simple" ? "GPT-3.5-turbo" : "GPT-4"}
               <br />• Tempo estimado: {contractType === "simple" ? "30-60s" : "60-120s"}
               <br />• Máximo de tokens: {maxTokensLimit.toLocaleString()}
-              <br />• Consulta LexML: {includeLexML ? "Ativada" : "Desativada"}
-              <br />• Campos personalizados: {sections.reduce((acc, s) => acc + s.fields.length, 0)}
+              <br />• Consulta LexML: {includeLexML ? (enhancedLexML ? "Aprimorada" : "Ativada") : "Desativada"}
+              <br />• Números de leis: {includeLegalNumbers ? "Incluídos" : "Omitidos"}
+              <br />• Linguagem: {LANGUAGE_STYLES.find((s) => s.id === languageStyle)?.name}
+              <br />• Seções ativas: {Object.values(sectionToggles).filter(Boolean).length}/
+              {Object.keys(sectionToggles).length}
+              <br />• Campos personalizados:{" "}
+              {sections.reduce((acc, s, i) => {
+                const sectionKey = s.name.toLowerCase()
+                return acc + (sectionToggles[sectionKey] !== false ? s.fields.length : 0)
+              }, 0)}
+              <br />• Refinamentos ativos: {Object.values(contractRefinements).filter(Boolean).length}
             </div>
           </div>
         </CardContent>

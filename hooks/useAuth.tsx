@@ -36,20 +36,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isDemo, setIsDemo] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "demo" | "error" | "checking">("checking")
 
-  // Check if Supabase is properly configured
-  const isSupabaseConfigured = () => {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-    return !!(
-      url &&
-      key &&
-      url !== "your-supabase-url" &&
-      key !== "your-supabase-anon-key" &&
-      url.startsWith("https://") &&
-      key.length > 20
-    )
-  }
+  // Check if this is a mock client
+  const isMockClient = (supabase as any)?._isMockClient === true
 
   // Setup demo data
   const setupDemoData = () => {
@@ -88,43 +76,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(false)
   }
 
-  // Test Supabase connectivity
-  const testSupabaseConnection = async (): Promise<boolean> => {
-    if (!isSupabaseConfigured()) {
-      return false
-    }
-
-    try {
-      // Simple connectivity test
-      const { error } = await supabase.from("profiles").select("id").limit(1)
-      return !error
-    } catch (error) {
-      return false
-    }
-  }
-
-  // Main effect
+  // Initialize auth state
   useEffect(() => {
     const initializeAuth = async () => {
       try {
         setConnectionStatus("checking")
 
-        // First check if Supabase is configured
-        if (!isSupabaseConfigured()) {
+        // If using mock client, setup demo immediately
+        if (isMockClient) {
           setupDemoData()
           return
         }
 
-        // Test connectivity
-        const isConnected = await testSupabaseConnection()
-        if (!isConnected) {
+        // Test connectivity with a simple query
+        try {
+          await supabase.from("profiles").select("id").limit(1)
+          setConnectionStatus("connected")
+        } catch (error) {
           setupDemoData()
           return
         }
 
-        setConnectionStatus("connected")
-
-        // If no session and not loading, finish
+        // Handle session state
         if (!sessionLoading && !session) {
           setProfile(null)
           setSubscription(null)
@@ -134,21 +107,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // If user is authenticated, fetch data
         if (session?.user) {
-          await fetchUserDataSafely(session.user.id)
+          await fetchUserData(session.user.id)
         } else {
           setLoading(false)
         }
       } catch (error) {
+        console.warn("Auth initialization error:", error)
         setupDemoData()
       }
     }
 
     initializeAuth()
-  }, [session, sessionLoading])
+  }, [session, sessionLoading, isMockClient])
 
-  // Safe user data fetching with better error handling
-  const fetchUserDataSafely = async (userId: string) => {
-    if (!isSupabaseConfigured()) {
+  // Fetch user data
+  const fetchUserData = async (userId: string) => {
+    if (isMockClient) {
       setupDemoData()
       return
     }
@@ -156,26 +130,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true)
 
-      // Fetch profile first - wait a bit for trigger to execute
+      // Small delay to allow triggers to execute
       await new Promise((resolve) => setTimeout(resolve, 500))
 
-      let profileData = null
-      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle()
+      // Fetch profile
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle()
 
-      if (data) {
-        profileData = data
-        setProfile(data)
-      } else if (!error || error.code === "PGRST116") {
-        // Profile not found, create manually
+      if (profileData) {
+        setProfile(profileData)
+      } else if (!profileError || profileError.code === "PGRST116") {
+        // Create profile if not found
         const newProfile = await createUserProfile(userId)
         if (newProfile) {
-          profileData = newProfile
           setProfile(newProfile)
         }
       }
 
       // Fetch subscription
-      let subscriptionData = null
       const { data: subData, error: subError } = await supabase
         .from("subscriptions")
         .select("*")
@@ -183,19 +158,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle()
 
       if (subData) {
-        subscriptionData = subData
         setSubscription(subData)
       } else if (!subError || subError.code === "PGRST116") {
-        // Subscription not found, create manually
+        // Create subscription if not found
         const newSubscription = await createUserSubscription(userId)
         if (newSubscription) {
-          subscriptionData = newSubscription
           setSubscription(newSubscription)
         }
       }
 
       setConnectionStatus("connected")
     } catch (error) {
+      console.warn("Error fetching user data:", error)
       setConnectionStatus("error")
       setupDemoData()
     } finally {
@@ -205,14 +179,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const createUserProfile = async (userId: string): Promise<Profile | null> => {
     try {
-      // Get user metadata from auth
       const userMetadata = user?.user_metadata || {}
       const email = user?.email || session?.user?.email || ""
-
-      // Extract name from email if no metadata
       const emailName = email.split("@")[0]
 
-      // Build profile data with all available information
       const profileData: Omit<Profile, "created_at" | "updated_at"> = {
         id: userId,
         tipo_pessoa: userMetadata.tipo_pessoa || "PF",
@@ -229,11 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const { data, error } = await supabase.from("profiles").insert(profileData).select().single()
 
-      if (error) {
-        return null
-      }
-
-      return data
+      return error ? null : data
     } catch (error) {
       return null
     }
@@ -252,27 +218,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const { data, error } = await supabase.from("subscriptions").insert(subscriptionData).select().single()
 
-      if (error) {
-        return null
-      }
-
-      return data
+      return error ? null : data
     } catch (error) {
       return null
     }
   }
 
   const signIn = async (email: string, password: string) => {
-    if (!isSupabaseConfigured()) {
+    if (isMockClient) {
       setupDemoData()
       return { error: null }
     }
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
+
+      if (error && error.message?.includes("refresh")) {
+        // Handle refresh token errors by switching to demo
+        setupDemoData()
+        return { error: null }
+      }
+
+      return { error }
+    } catch (err: any) {
+      console.warn("Auth error, switching to demo mode:", err)
+      setupDemoData()
+      return { error: null }
+    }
+  }
+
+  const signUp = async (email: string, password: string, userData: any) => {
+    if (isMockClient) {
+      setupDemoData()
+      return { error: null }
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            ...userData,
+            email: email,
+          },
+        },
+      })
+
       return { error }
     } catch (err) {
       setupDemoData()
@@ -280,40 +275,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const signUp = async (email: string, password: string, userData: any) => {
-    if (!isSupabaseConfigured()) {
-      setupDemoData()
-      return { error: null }
-    }
-
-    try {
-      // Sign up with complete user data in metadata
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            ...userData,
-            email: email, // Ensure email is in metadata
-          },
-        },
-      })
-
-      if (error) {
-        return { error }
-      }
-
-      // Don't try to create profile/subscription immediately
-      // Let the trigger handle it, or it will be created on first login
-      return { error: null }
-    } catch (err) {
-      setupDemoData()
-      return { error: null }
-    }
-  }
-
   const signOut = async () => {
-    if (isDemo) {
+    if (isDemo || isMockClient) {
       setProfile(null)
       setSubscription(null)
       setIsDemo(false)
@@ -331,14 +294,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const updateProfile = async (updates: Partial<Profile>) => {
-    if (isDemo) {
+    if (isDemo || isMockClient) {
       if (profile) {
         setProfile({ ...profile, ...updates })
       }
       return { error: null }
     }
 
-    if (!user || !isSupabaseConfigured()) {
+    if (!user) {
       return { error: { message: "Usuário não autenticado" } }
     }
 
@@ -362,7 +325,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const refreshProfile = async () => {
-    if (isDemo) {
+    if (isDemo || isMockClient) {
       setupDemoData()
       return
     }
@@ -370,7 +333,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!session?.user) return
 
     try {
-      await fetchUserDataSafely(session.user.id)
+      await fetchUserData(session.user.id)
     } catch (err) {
       // Silent error handling
     }
