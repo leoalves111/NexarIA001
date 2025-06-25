@@ -14,8 +14,7 @@ interface AuthContextType {
   profile: Profile | null
   subscription: Subscription | null
   loading: boolean
-  isDemo: boolean
-  connectionStatus: "connected" | "demo" | "error" | "checking"
+  connectionStatus: "connected" | "error" | "checking"
   signIn: (email: string, password: string) => Promise<{ error: any }>
   signUp: (email: string, password: string, userData: any) => Promise<{ error: any }>
   signOut: () => Promise<void>
@@ -33,48 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isDemo, setIsDemo] = useState(false)
-  const [connectionStatus, setConnectionStatus] = useState<"connected" | "demo" | "error" | "checking">("checking")
-
-  // Check if this is a mock client
-  const isMockClient = (supabase as any)?._isMockClient === true
-
-  // Setup demo data
-  const setupDemoData = () => {
-    const demoProfile: Profile = {
-      id: "demo-user-id",
-      tipo_pessoa: "PF",
-      nome: "Usuário",
-      sobrenome: "Demo",
-      cpf: null,
-      razao_social: null,
-      nome_fantasia: null,
-      cnpj: null,
-      nome_responsavel: null,
-      email: "demo@nexaria.com",
-      whatsapp: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-
-    const demoSubscription: Subscription = {
-      id: "demo-subscription-id",
-      user_id: "demo-user-id",
-      plano: "teste_gratis",
-      status: "active",
-      creditos_simples: 5,
-      creditos_avancados: 2,
-      data_expiracao: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-
-    setProfile(demoProfile)
-    setSubscription(demoSubscription)
-    setIsDemo(true)
-    setConnectionStatus("demo")
-    setLoading(false)
-  }
+  const [connectionStatus, setConnectionStatus] = useState<"connected" | "error" | "checking">("checking")
 
   // Initialize auth state
   useEffect(() => {
@@ -82,18 +40,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setConnectionStatus("checking")
 
-        // If using mock client, setup demo immediately
-        if (isMockClient) {
-          setupDemoData()
-          return
-        }
-
         // Test connectivity with a simple query
         try {
           await supabase.from("profiles").select("id").limit(1)
           setConnectionStatus("connected")
         } catch (error) {
-          setupDemoData()
+          console.error("Database connection error:", error)
+          setConnectionStatus("error")
+          setLoading(false)
           return
         }
 
@@ -112,21 +66,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(false)
         }
       } catch (error) {
-        console.warn("Auth initialization error:", error)
-        setupDemoData()
+        console.error("Auth initialization error:", error)
+        setConnectionStatus("error")
+        setLoading(false)
       }
     }
 
     initializeAuth()
-  }, [session, sessionLoading, isMockClient])
+  }, [session, sessionLoading, supabase])
 
   // Fetch user data
   const fetchUserData = async (userId: string) => {
-    if (isMockClient) {
-      setupDemoData()
-      return
-    }
-
     try {
       setLoading(true)
 
@@ -169,9 +119,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setConnectionStatus("connected")
     } catch (error) {
-      console.warn("Error fetching user data:", error)
+      console.error("Error fetching user data:", error)
       setConnectionStatus("error")
-      setupDemoData()
     } finally {
       setLoading(false)
     }
@@ -201,6 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return error ? null : data
     } catch (error) {
+      console.error("Error creating profile:", error)
       return null
     }
   }
@@ -220,42 +170,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return error ? null : data
     } catch (error) {
+      console.error("Error creating subscription:", error)
       return null
     }
   }
 
   const signIn = async (email: string, password: string) => {
-    if (isMockClient) {
-      setupDemoData()
-      return { error: null }
-    }
-
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error && error.message?.includes("refresh")) {
-        // Handle refresh token errors by switching to demo
-        setupDemoData()
-        return { error: null }
-      }
-
       return { error }
     } catch (err: any) {
-      console.warn("Auth error, switching to demo mode:", err)
-      setupDemoData()
-      return { error: null }
+      console.error("Auth error:", err)
+      return { error: err }
     }
   }
 
   const signUp = async (email: string, password: string, userData: any) => {
-    if (isMockClient) {
-      setupDemoData()
-      return { error: null }
-    }
-
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -270,37 +204,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return { error }
     } catch (err) {
-      setupDemoData()
-      return { error: null }
+      console.error("SignUp error:", err)
+      return { error: err }
     }
   }
 
   const signOut = async () => {
-    if (isDemo || isMockClient) {
-      setProfile(null)
-      setSubscription(null)
-      setIsDemo(false)
-      setConnectionStatus("checking")
-      return
-    }
-
     try {
       await supabase.auth.signOut()
       setProfile(null)
       setSubscription(null)
     } catch (err) {
-      // Silent error handling
+      console.error("SignOut error:", err)
     }
   }
 
   const updateProfile = async (updates: Partial<Profile>) => {
-    if (isDemo || isMockClient) {
-      if (profile) {
-        setProfile({ ...profile, ...updates })
-      }
-      return { error: null }
-    }
-
     if (!user) {
       return { error: { message: "Usuário não autenticado" } }
     }
@@ -320,32 +239,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(data)
       return { error: null }
     } catch (err) {
+      console.error("Update profile error:", err)
       return { error: { message: "Erro de rede - tente novamente" } }
     }
   }
 
   const refreshProfile = async () => {
-    if (isDemo || isMockClient) {
-      setupDemoData()
-      return
-    }
-
     if (!session?.user) return
 
     try {
       await fetchUserData(session.user.id)
     } catch (err) {
-      // Silent error handling
+      console.error("Refresh profile error:", err)
     }
   }
 
   const value = {
-    user: isDemo ? { id: "demo-user-id", email: "demo@nexaria.com" } : user,
-    session: isDemo ? { user: { id: "demo-user-id", email: "demo@nexaria.com" } } : session,
+    user,
+    session,
     profile,
     subscription,
     loading: loading || sessionLoading,
-    isDemo,
     connectionStatus,
     signIn,
     signUp,

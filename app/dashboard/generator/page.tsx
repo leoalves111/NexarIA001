@@ -10,7 +10,18 @@ import AdvancedSettings from "@/components/generator/advanced-settings"
 import ContractPreviewModal from "@/components/generator/contract-preview-modal"
 import ContractTemplateSelector from "@/components/generator/contract-template-selector"
 import { supabase } from "@/lib/supabase"
-import crypto from "crypto"
+// Replace the existing generateCacheKey function with this browser-compatible version
+const generateCacheKey = (title: string, description: string, contractType: string, advancedConfig: any) => {
+  const content = `${title}-${description}-${contractType}-${JSON.stringify(advancedConfig)}`
+  // Use a simple hash function for the browser
+  let hash = 0
+  for (let i = 0; i < content.length; i++) {
+    const char = content.charCodeAt(i)
+    hash = (hash << 5) - hash + char
+    hash = hash & hash // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36)
+}
 
 export default function GeneratorPage() {
   // Estados principais
@@ -87,12 +98,8 @@ export default function GeneratorPage() {
 
     try {
       // 1. Gerar hash para cache
-      const cacheKey = crypto
-        .createHash("md5")
-        .update(
-          `${title}-${description}-${contractType}-${temperature}-${maxTokens}-${customPrompt}-${JSON.stringify(advancedConfig)}`,
-        )
-        .digest("hex")
+      // With this:
+      const cacheKey = generateCacheKey(title, description, contractType, advancedConfig)
 
       // 2. Verificar cache
       const cacheResponse = await fetch("/api/check-cache", {
@@ -170,10 +177,27 @@ ${description}`,
         }),
       })
 
-      const result = await generateResponse.json()
+      let result
+      try {
+        // Verificar se a resposta é JSON válido
+        const responseText = await generateResponse.text()
 
-      if (!generateResponse.ok) {
-        throw new Error(result.error || "Falha na geração do contrato")
+        if (!generateResponse.ok) {
+          // Tentar parsear como JSON para pegar a mensagem de erro
+          try {
+            const errorData = JSON.parse(responseText)
+            throw new Error(errorData.error || `Erro HTTP ${generateResponse.status}`)
+          } catch {
+            // Se não for JSON, usar o texto da resposta
+            throw new Error(`Erro do servidor: ${responseText.substring(0, 100)}...`)
+          }
+        }
+
+        // Tentar parsear a resposta como JSON
+        result = JSON.parse(responseText)
+      } catch (parseError) {
+        console.error("Erro ao processar resposta da API:", parseError)
+        throw new Error("Erro na comunicação com o servidor. Tente novamente.")
       }
 
       if (!result.content) {

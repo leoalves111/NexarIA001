@@ -1130,155 +1130,376 @@ const generateClassicTemplate = (
   // Usar o título do usuário
   const contractTitle = title || contract.titulo_contrato
 
-  // Gerar o conteúdo do contrato
-  let contractContent = `
+  // Verificações de segurança para evitar erros de .join()
+  const safeEspecificacoes = Array.isArray(contract.especificacoes_tecnicas) ? contract.especificacoes_tecnicas : []
+  const safeObrigacoesContratado = Array.isArray(contract.obrigacoes_contratado) ? contract.obrigacoes_contratado : []
+  const safeObrigacoesContratante = Array.isArray(contract.obrigacoes_contratante)
+    ? contract.obrigacoes_contratante
+    : []
+  const safeMarcos = Array.isArray(contract.prazo_execucao?.marcos) ? contract.prazo_execucao.marcos : []
+  const safeClausulasEspeciais = Array.isArray(contract.clausulas_especiais) ? contract.clausulas_especiais : []
+  const safeGarantias = Array.isArray(contract.garantias) ? contract.garantias : []
 
-CONTRATO DE PRESTAÇÃO DE SERVIÇOS PROFISSIONAIS
+  // Gerar HTML formatado para melhor visualização
+  return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${contractTitle}</title>
+    <style>
+        body {
+            font-family: 'Times New Roman', serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            color: #000;
+            margin: 0;
+            padding: 20px;
+            background: white;
+        }
+        
+        .contract-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+        }
+        
+        .contract-title {
+            text-align: center;
+            font-size: 18pt;
+            font-weight: bold;
+            margin: 0 0 30px 0;
+            padding: 20px 0;
+            border-bottom: 3px solid #2563eb;
+            color: #1e40af;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .section-title {
+            font-size: 14pt;
+            font-weight: bold;
+            margin: 25px 0 10px 0;
+            color: #1e40af;
+            text-transform: uppercase;
+            border-left: 4px solid #2563eb;
+            padding-left: 10px;
+        }
+        
+        .party-info {
+            background: #f8fafc;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #10b981;
+        }
+        
+        .content-section {
+            margin: 20px 0;
+            text-align: justify;
+        }
+        
+        .list-item {
+            margin: 8px 0;
+            padding-left: 20px;
+        }
+        
+        .signature-section {
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 2px solid #e5e7eb;
+        }
+        
+        .signature-line {
+            margin: 40px 0;
+            text-align: center;
+        }
+        
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            font-size: 10pt;
+            color: #6b7280;
+        }
+    </style>
+</head>
+<body>
+    <div class="contract-container">
+        <h1 class="contract-title">CONTRATO DE PRESTAÇÃO DE SERVIÇOS PROFISSIONAIS</h1>
+        
+        <div class="party-info">
+            <h2 class="section-title">CONTRATANTE</h2>
+            <p><strong>Nome:</strong> ${allFields.contratante_nome || "[Nome do Contratante]"}</p>
+            <p><strong>CNPJ:</strong> ${allFields.contratante_cnpj || "[CNPJ do Contratante]"}</p>
+            <p><strong>Endereço:</strong> ${allFields.contratante_endereco || "[Endereço do Contratante]"}</p>
+            <p><strong>Telefone:</strong> ${allFields.contratante_telefone || "[Telefone do Contratante]"}</p>
+            <p><strong>E-mail:</strong> ${allFields.contratante_email || "[E-mail do Contratante]"}</p>
+        </div>
 
-CONTRATANTE: ${allFields.contratante_nome || "[Nome do Contratante]"}
-CNPJ: ${allFields.contratante_cnpj || "[CNPJ do Contratante]"}
-ENDEREÇO: ${allFields.contratante_endereco || "[Endereço do Contratante]"}
-TELEFONE: ${allFields.contratante_telefone || "[Telefone do Contratante]"}
-E-MAIL: ${allFields.contratante_email || "[E-mail do Contratante]"}
+        <div class="party-info">
+            <h2 class="section-title">CONTRATADO</h2>
+            <p><strong>Nome:</strong> ${allFields.contratado_nome || "[Nome do Contratado]"}</p>
+            <p><strong>CPF:</strong> ${allFields.contratado_cpf || "[CPF do Contratado]"}</p>
+            <p><strong>Endereço:</strong> ${allFields.contratado_endereco || "[Endereço do Contratado]"}</p>
+            <p><strong>Telefone:</strong> ${allFields.contratado_telefone || "[Telefone do Contratado]"}</p>
+            <p><strong>E-mail:</strong> ${allFields.contratado_email || "[E-mail do Contratado]"}</p>
+        </div>
 
-CONTRATADO: ${allFields.contratado_nome || "[Nome do Contratado]"}
-CPF: ${allFields.contratado_cpf || "[CPF do Contratado]"}
-ENDEREÇO: ${allFields.contratado_endereco || "[Endereço do Contratado]"}
-TELEFONE: ${allFields.contratado_telefone || "[Telefone do Contratado]"}
-E-MAIL: ${allFields.contratado_email || "[E-mail do Contratado]"}
+        <div class="content-section">
+            <p><strong>Data:</strong> ${currentDate}</p>
+        </div>
 
-DATA: ${currentDate}
+        <h2 class="section-title">TÍTULO DO CONTRATO</h2>
+        <div class="content-section">
+            <p>${contractTitle}</p>
+        </div>
 
-TÍTULO DO CONTRATO: ${contractTitle}
+        <h2 class="section-title">OBJETO PRINCIPAL</h2>
+        <div class="content-section">
+            <p>${contract.objeto_principal}</p>
+        </div>
 
-OBJETO PRINCIPAL:
-${contract.objeto_principal}
+        <h2 class="section-title">OBJETO DETALHADO</h2>
+        <div class="content-section">
+            <p>${contract.objeto_detalhado}</p>
+        </div>
 
-OBJETO DETALHADO:
-${contract.objeto_detalhado}
+        <h2 class="section-title">ESPECIFICAÇÕES TÉCNICAS</h2>
+        <div class="content-section">
+            ${safeEspecificacoes.map((spec) => `<div class="list-item">• ${spec}</div>`).join("")}
+        </div>
 
-ESPECIFICAÇÕES TÉCNICAS:
-${contract.especificacoes_tecnicas.join("\n")}
+        <h2 class="section-title">OBRIGAÇÕES DO CONTRATADO</h2>
+        <div class="content-section">
+            ${safeObrigacoesContratado.map((obr) => `<div class="list-item">• ${obr}</div>`).join("")}
+        </div>
 
-OBRIGAÇÕES DO CONTRATADO:
-${contract.obrigacoes_contratado.join("\n")}
+        <h2 class="section-title">OBRIGAÇÕES DO CONTRATANTE</h2>
+        <div class="content-section">
+            ${safeObrigacoesContratante.map((obr) => `<div class="list-item">• ${obr}</div>`).join("")}
+        </div>
 
-OBRIGAÇÕES DO CONTRATANTE:
-${contract.obrigacoes_contratante.join("\n")}
+        <h2 class="section-title">CONDIÇÕES DE PAGAMENTO</h2>
+        <div class="content-section">
+            <div class="list-item"><strong>Valor Base:</strong> ${contract.condicoes_pagamento.valor_base}</div>
+            <div class="list-item"><strong>Forma de Pagamento:</strong> ${contract.condicoes_pagamento.forma_pagamento}</div>
+            <div class="list-item"><strong>Prazos:</strong> ${contract.condicoes_pagamento.prazos}</div>
+            <div class="list-item"><strong>Multas por Atraso:</strong> ${contract.condicoes_pagamento.multas_atraso}</div>
+        </div>
 
-CONDIÇÕES DE PAGAMENTO:
-- VALOR BASE: ${contract.condicoes_pagamento.valor_base}
-- FORMA DE PAGAMENTO: ${contract.condicoes_pagamento.forma_pagamento}
-- PRAZOS: ${contract.condicoes_pagamento.prazos}
-- MULTAS POR ATRASO: ${contract.condicoes_pagamento.multas_atraso}
+        <h2 class="section-title">PRAZO DE EXECUÇÃO</h2>
+        <div class="content-section">
+            <div class="list-item"><strong>Início:</strong> ${contract.prazo_execucao.inicio}</div>
+            <div class="list-item"><strong>Duração:</strong> ${contract.prazo_execucao.duracao}</div>
+            <div class="list-item"><strong>Marcos:</strong> ${safeMarcos.join(", ")}</div>
+            <div class="list-item"><strong>Entrega:</strong> ${contract.prazo_execucao.entrega}</div>
+        </div>
 
-PRAZO DE EXECUÇÃO:
-- INÍCIO: ${contract.prazo_execucao.inicio}
-- DURAÇÃO: ${contract.prazo_execucao.duracao}
-- MARCOS: ${contract.prazo_execucao.marcos.join(", ")}
-- ENTREGA: ${contract.prazo_execucao.entrega}
+        <h2 class="section-title">CLÁUSULAS ESPECIAIS</h2>
+        <div class="content-section">
+            ${safeClausulasEspeciais
+              .map(
+                (clause) => `
+                <div class="list-item">
+                    <strong>${clause.titulo}:</strong> ${clause.conteudo}
+                </div>
+            `,
+              )
+              .join("")}
+        </div>
 
-CLAUSULAS ESPECIAIS:
-${contract.clausulas_especiais.map((clause) => `- ${clause.titulo}: ${clause.conteudo}`).join("\n")}
+        <h2 class="section-title">RESCISÃO</h2>
+        <div class="content-section">
+            <div class="list-item"><strong>Condições:</strong> ${contract.rescisao.condicoes}</div>
+            <div class="list-item"><strong>Penalidades:</strong> ${contract.rescisao.penalidades}</div>
+            <div class="list-item"><strong>Devoluções:</strong> ${contract.rescisao.devolucoes}</div>
+        </div>
 
-RESCISÃO:
-- CONDIÇÕES: ${contract.rescisao.condicoes}
-- PENALIDADES: ${contract.rescisao.penalidades}
-- DEVOLUÇÕES: ${contract.rescisao.devolucoes}
+        ${
+          contract.propriedade_intelectual
+            ? `
+        <h2 class="section-title">PROPRIEDADE INTELECTUAL</h2>
+        <div class="content-section">
+            <p>${contract.propriedade_intelectual}</p>
+        </div>
+        `
+            : ""
+        }
 
-${
-  contract.propriedade_intelectual
-    ? `PROPRIEDADE INTELECTUAL:
-${contract.propriedade_intelectual}`
-    : ""
-}
+        ${
+          contract.confidencialidade
+            ? `
+        <h2 class="section-title">CONFIDENCIALIDADE</h2>
+        <div class="content-section">
+            <p>${contract.confidencialidade}</p>
+        </div>
+        `
+            : ""
+        }
 
-${
-  contract.confidencialidade
-    ? `CONFIDENCIALIDADE:
-${contract.confidencialidade}`
-    : ""
-}
+        <h2 class="section-title">GARANTIAS</h2>
+        <div class="content-section">
+            ${safeGarantias.map((garantia) => `<div class="list-item">• ${garantia}</div>`).join("")}
+        </div>
 
-GARANTIAS:
-${contract.garantias.join("\n")}
+        <h2 class="section-title">DISPOSIÇÕES LEGAIS</h2>
+        <div class="content-section">
+            <div class="list-item"><strong>Lei Aplicável:</strong> ${contract.disposicoes_legais.lei_aplicavel}</div>
+            <div class="list-item"><strong>Foro Competente:</strong> ${contract.disposicoes_legais.foro_competente}</div>
+            <div class="list-item"><strong>Alterações:</strong> ${contract.disposicoes_legais.alteracoes}</div>
+        </div>
 
-DISPOSIÇÕES LEGAIS:
-- LEI APLICÁVEL: ${contract.disposicoes_legais.lei_aplicavel}
-- FORO COMPETENTE: ${contract.disposicoes_legais.foro_competente}
-- ALTERAÇÕES: ${contract.disposicoes_legais.alteracoes}
+        ${
+          lexmlReferences && lexmlReferences.length > 0
+            ? `
+        <h2 class="section-title">REFERÊNCIAS LEGAIS</h2>
+        <div class="content-section">
+            ${lexmlReferences.map((ref, i) => `<div class="list-item">${i + 1}. ${ref.title} - ${ref.article}</div>`).join("")}
+        </div>
+        `
+            : ""
+        }
 
-`
+        <div class="signature-section">
+            <div class="signature-line">
+                <strong>CONTRATANTE</strong><br><br>
+                Nome: _________________________________<br>
+                CPF/CNPJ: _____________________________<br>
+                Assinatura: ____________________________
+            </div>
+            
+            <div class="signature-line">
+                <strong>CONTRATADO</strong><br><br>
+                Nome: _________________________________<br>
+                CPF: __________________________________<br>
+                Assinatura: ____________________________
+            </div>
+        </div>
 
-  // Adicionar referências legais se disponíveis
-  if (lexmlReferences && lexmlReferences.length > 0) {
-    contractContent += `\nREFERÊNCIAS LEGAIS:
-${lexmlReferences.map((ref, i) => `${i + 1}. ${ref.title} - ${ref.article}`).join("\n")}
-`
-  }
-
-  return contractContent
+        <div class="footer">
+            <p>Documento gerado em ${currentDate}</p>
+            <p><strong>Este documento foi gerado por IA especializada em direito.</strong> Consulte um advogado antes de usar em situações formais.</p>
+        </div>
+    </div>
+</body>
+</html>`
 }
 
 // Função principal para lidar com a rota
 export const POST = async (req: NextRequest) => {
-  const body = await req.json()
-  const parsed = GenerateSchema.safeParse(body)
+  try {
+    const body = await req.json()
+    const parsed = GenerateSchema.safeParse(body)
 
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.message }, { status: 400 })
-  }
+    if (!parsed.success) {
+      console.error("Erro de validação:", parsed.error)
+      return NextResponse.json(
+        { error: "Dados de entrada inválidos: " + parsed.error.issues[0]?.message },
+        { status: 400 },
+      )
+    }
 
-  const {
-    prompt,
-    contractType,
-    fields,
-    title,
-    temperature,
-    maxTokens,
-    customPrompt,
-    lexmlData,
-    cacheKey,
-    fieldMetadata,
-    template,
-    advancedFieldsEnabled,
-    languageStyle,
-    enhancedLexML,
-    contractRefinements,
-    languagePrompt,
-    sectionToggles,
-    includeLegalNumbers,
-  } = parsed.data
-
-  const flattenedFields = flattenFieldMetadata(fieldMetadata, sectionToggles)
-  const lexmlReferences = await fetchLexMLReferences(prompt, title, enhancedLexML)
-  const contract = await generateProfessionalContract(
-    prompt,
-    title,
-    contractType,
-    customPrompt,
-    lexmlReferences.references,
-    temperature,
-    maxTokens,
-    languagePrompt,
-    contractRefinements,
-    sectionToggles,
-    includeLegalNumbers,
-  )
-
-  let contractContent = ""
-  if (template === "classic") {
-    contractContent = generateClassicTemplate(
+    const {
+      prompt,
+      contractType,
+      fields,
       title,
-      contract,
-      flattenedFields,
-      lexmlReferences.references,
-      undefined,
+      temperature,
+      maxTokens,
+      customPrompt,
+      lexmlData,
+      cacheKey,
+      fieldMetadata,
+      template,
       advancedFieldsEnabled,
+      languageStyle,
+      enhancedLexML,
+      contractRefinements,
+      languagePrompt,
       sectionToggles,
+      includeLegalNumbers,
+    } = parsed.data
+
+    // Validações básicas
+    if (!title || title.trim().length === 0) {
+      return NextResponse.json({ error: "Título é obrigatório" }, { status: 400 })
+    }
+
+    if (!prompt || prompt.trim().length === 0) {
+      return NextResponse.json({ error: "Descrição é obrigatória" }, { status: 400 })
+    }
+
+    try {
+      const flattenedFields = flattenFieldMetadata(fieldMetadata, sectionToggles)
+      const lexmlReferences = await fetchLexMLReferences(prompt, title, enhancedLexML)
+
+      const contract = await generateProfessionalContract(
+        prompt,
+        title,
+        contractType,
+        customPrompt,
+        lexmlReferences.references,
+        temperature,
+        maxTokens,
+        languagePrompt,
+        contractRefinements,
+        sectionToggles,
+        includeLegalNumbers,
+      )
+
+      let contractContent = ""
+      if (template === "classic") {
+        contractContent = generateClassicTemplate(
+          title,
+          contract,
+          flattenedFields,
+          lexmlReferences.references,
+          undefined,
+          advancedFieldsEnabled,
+          sectionToggles,
+        )
+      } else {
+        // Fallback para outros templates
+        contractContent = generateClassicTemplate(
+          title,
+          contract,
+          flattenedFields,
+          lexmlReferences.references,
+          undefined,
+          advancedFieldsEnabled,
+          sectionToggles,
+        )
+      }
+
+      // Verificar se o conteúdo foi gerado
+      if (!contractContent || contractContent.trim().length === 0) {
+        return NextResponse.json({ error: "Falha ao gerar o conteúdo do contrato" }, { status: 500 })
+      }
+
+      // Retornar o conteúdo do contrato
+      return NextResponse.json({ content: contractContent, success: true }, { status: 200 })
+    } catch (contractError) {
+      console.error("Erro na geração do contrato:", contractError)
+      return NextResponse.json(
+        {
+          error:
+            "Erro interno na geração do contrato: " +
+            (contractError instanceof Error ? contractError.message : "Erro desconhecido"),
+        },
+        { status: 500 },
+      )
+    }
+  } catch (error) {
+    console.error("Erro geral na API:", error)
+    return NextResponse.json(
+      {
+        error: "Erro interno do servidor: " + (error instanceof Error ? error.message : "Erro desconhecido"),
+      },
+      { status: 500 },
     )
   }
-
-  // Retornar o conteúdo do contrato
-  return NextResponse.json({ contract: contractContent }, { status: 200 })
 }

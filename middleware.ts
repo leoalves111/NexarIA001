@@ -7,6 +7,16 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
 
   try {
+    // Skip middleware in preview environments
+    const isPreview =
+      req.nextUrl.hostname.includes("vusercontent.net") ||
+      req.nextUrl.hostname.includes("v0.dev") ||
+      req.nextUrl.hostname.includes("localhost")
+
+    if (isPreview) {
+      return res
+    }
+
     // Check if Supabase is configured
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY

@@ -16,78 +16,6 @@ const isSupabaseConfigured = () => {
   )
 }
 
-// Create a mock client that mimics Supabase's interface
-const createMockClient = () => ({
-  auth: {
-    getSession: () => Promise.resolve({ data: { session: null }, error: null }),
-    signInWithPassword: () =>
-      Promise.resolve({
-        data: { user: null, session: null },
-        error: null,
-      }),
-    signUp: () =>
-      Promise.resolve({
-        data: { user: null, session: null },
-        error: null,
-      }),
-    signOut: () => Promise.resolve({ error: null }),
-    onAuthStateChange: (callback: any) => {
-      const demoUser = {
-        id: "demo-user-id",
-        email: "demo@nexaria.com",
-        user_metadata: {
-          nome: "Usuário",
-          sobrenome: "Demo",
-        },
-      }
-      const demoSession = {
-        user: demoUser,
-        access_token: "demo-token",
-      }
-      setTimeout(() => callback("SIGNED_IN", demoSession), 100)
-      return {
-        data: {
-          subscription: {
-            unsubscribe: () => {},
-          },
-        },
-      }
-    },
-    resetPasswordForEmail: () => Promise.resolve({ data: null, error: null }),
-    getUser: () =>
-      Promise.resolve({
-        data: {
-          user: {
-            id: "demo-user-id",
-            email: "demo@nexaria.com",
-            user_metadata: {
-              nome: "Usuário",
-              sobrenome: "Demo",
-            },
-          },
-        },
-        error: null,
-      }),
-  },
-  from: (table: string) => ({
-    select: (columns?: string) => ({
-      eq: (column: string, value: any) => ({
-        single: () => Promise.resolve({ data: null, error: { code: "PGRST116", message: "Not found" } }),
-        maybeSingle: () => Promise.resolve({ data: null, error: { code: "PGRST116", message: "Not found" } }),
-      }),
-      order: () => Promise.resolve({ data: [], error: null }),
-    }),
-    insert: () => Promise.resolve({ data: null, error: null }),
-    update: (data: any) => ({
-      eq: () => Promise.resolve({ data: null, error: null }),
-    }),
-    delete: () => ({
-      eq: () => Promise.resolve({ data: null, error: null }),
-    }),
-  }),
-  _isMockClient: true,
-})
-
 // Single client instance
 let clientInstance: any = null
 
@@ -100,13 +28,13 @@ export const createSupabaseClient = () => {
 
   // Check if we're in browser environment
   if (typeof window === "undefined") {
-    return createMockClient()
+    return null
   }
 
   // Check configuration
   if (!isSupabaseConfigured()) {
-    clientInstance = createMockClient()
-    return clientInstance
+    console.warn("Supabase not configured properly")
+    return null
   }
 
   try {
@@ -114,9 +42,8 @@ export const createSupabaseClient = () => {
     clientInstance = createClientComponentClient<Database>()
     return clientInstance
   } catch (error) {
-    console.warn("Failed to create Supabase client, using demo mode:", error)
-    clientInstance = createMockClient()
-    return clientInstance
+    console.error("Failed to create Supabase client:", error)
+    return null
   }
 }
 
@@ -127,9 +54,8 @@ export const supabase = createSupabaseClient()
 export const auth = {
   signUp: async (email: string, password: string, userData: any) => {
     const client = createSupabaseClient()
-
-    if (client._isMockClient) {
-      return { data: { user: { id: "demo-user-id", email } }, error: null }
+    if (!client) {
+      return { data: null, error: { message: "Supabase not configured" } }
     }
 
     try {
@@ -140,32 +66,15 @@ export const auth = {
       })
       return { data, error }
     } catch (err) {
-      console.warn("SignUp error, using demo mode:", err)
-      return { data: { user: { id: "demo-user-id", email } }, error: null }
+      console.error("SignUp error:", err)
+      return { data: null, error: err }
     }
   },
 
   signIn: async (email: string, password: string) => {
     const client = createSupabaseClient()
-
-    if (client._isMockClient) {
-      return {
-        data: {
-          user: {
-            id: "demo-user-id",
-            email,
-            user_metadata: { nome: "Usuário", sobrenome: "Demo" },
-          },
-          session: {
-            user: {
-              id: "demo-user-id",
-              email,
-              user_metadata: { nome: "Usuário", sobrenome: "Demo" },
-            },
-          },
-        },
-        error: null,
-      }
+    if (!client) {
+      return { data: null, error: { message: "Supabase not configured" } }
     }
 
     try {
@@ -175,32 +84,15 @@ export const auth = {
       })
       return { data, error }
     } catch (err) {
-      console.warn("SignIn error, using demo mode:", err)
-      return {
-        data: {
-          user: {
-            id: "demo-user-id",
-            email,
-            user_metadata: { nome: "Usuário", sobrenome: "Demo" },
-          },
-          session: {
-            user: {
-              id: "demo-user-id",
-              email,
-              user_metadata: { nome: "Usuário", sobrenome: "Demo" },
-            },
-          },
-        },
-        error: null,
-      }
+      console.error("SignIn error:", err)
+      return { data: null, error: err }
     }
   },
 
   signOut: async () => {
     const client = createSupabaseClient()
-
-    if (client._isMockClient) {
-      return { error: null }
+    if (!client) {
+      return { error: { message: "Supabase not configured" } }
     }
 
     try {
@@ -209,15 +101,15 @@ export const auth = {
       clientInstance = null
       return { error }
     } catch (err) {
-      return { error: null }
+      console.error("SignOut error:", err)
+      return { error: err }
     }
   },
 
   resetPassword: async (email: string) => {
     const client = createSupabaseClient()
-
-    if (client._isMockClient || typeof window === "undefined") {
-      return { data: null, error: null }
+    if (!client || typeof window === "undefined") {
+      return { data: null, error: { message: "Supabase not configured" } }
     }
 
     try {
@@ -226,15 +118,15 @@ export const auth = {
       })
       return { data, error }
     } catch (err) {
-      return { data: null, error: null }
+      console.error("Reset password error:", err)
+      return { data: null, error: err }
     }
   },
 
   getSession: async () => {
     const client = createSupabaseClient()
-
-    if (client._isMockClient) {
-      return { session: null, error: null }
+    if (!client) {
+      return { session: null, error: { message: "Supabase not configured" } }
     }
 
     try {
@@ -244,22 +136,15 @@ export const auth = {
       } = await client.auth.getSession()
       return { session, error }
     } catch (err) {
-      return { session: null, error: null }
+      console.error("Get session error:", err)
+      return { session: null, error: err }
     }
   },
 
   getUser: async () => {
     const client = createSupabaseClient()
-
-    if (client._isMockClient) {
-      return {
-        user: {
-          id: "demo-user-id",
-          email: "demo@nexaria.com",
-          user_metadata: { nome: "Usuário", sobrenome: "Demo" },
-        },
-        error: null,
-      }
+    if (!client) {
+      return { user: null, error: { message: "Supabase not configured" } }
     }
 
     try {
@@ -269,14 +154,8 @@ export const auth = {
       } = await client.auth.getUser()
       return { user, error }
     } catch (err) {
-      return {
-        user: {
-          id: "demo-user-id",
-          email: "demo@nexaria.com",
-          user_metadata: { nome: "Usuário", sobrenome: "Demo" },
-        },
-        error: null,
-      }
+      console.error("Get user error:", err)
+      return { user: null, error: err }
     }
   },
 }
