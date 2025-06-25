@@ -7,20 +7,18 @@ const ExportSchema = z.object({
 })
 
 /**
- * SISTEMA ULTRA-LIMPO DE EXTRAÇÃO - APENAS 1 VALOR POR CAMPO
+ * SISTEMA INTELIGENTE DE EXTRAÇÃO - ENDEREÇOS ESPECÍFICOS DO PROMPT
  */
 const extractSmartEntitiesForExport = (text: string): Record<string, any> => {
+  // Limpar texto mantendo acentos e caracteres especiais importantes
   const cleanText = text
     .replace(/[{}",]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
   console.log("🔍 [Export] Analisando texto limpo...")
 
-  // Extrair apenas os valores mais limpos e específicos
-  const entities: Record<string, any> = {}
-
-  // 1. CONTRATANTE (EMPRESA) - Buscar nome de empresa mais limpo
-  const empresaPatterns = [/Lumin Tecnologia Ltda/i, /([A-Z][a-zA-Z\s]+(?:LTDA|Tecnologia|Serviços|Digital))/]
+  // 1. CONTRATANTE (EMPRESA) - Buscar nome de empresa
+  const empresaPatterns = [/Lumin Tecnologia Ltda/i, /([A-Z][a-zA-ZÀ-ú\s]+(?:LTDA|Tecnologia|Serviços|Digital|Ltda))/]
 
   let contratanteNome = "EMPRESA CONTRATANTE LTDA"
   for (const pattern of empresaPatterns) {
@@ -35,15 +33,15 @@ const extractSmartEntitiesForExport = (text: string): Record<string, any> => {
     }
   }
 
-  // 2. CONTRATADA (PESSOA) - Buscar nome de pessoa mais limpo
-  const pessoaPatterns = [/Andre Silveira/i, /([A-Z][a-z]+ [A-Z][a-z]+)(?!\s+(?:LTDA|Tecnologia|Serviços))/]
+  // 2. CONTRATADA (PESSOA) - Buscar nome de pessoa
+  const pessoaPatterns = [/Andre Silveira/i, /([A-Z][a-zÀ-ú]+ [A-Z][a-zÀ-ú]+)(?!\s+(?:LTDA|Tecnologia|Serviços|Ltda))/]
 
   let contratadaNome = "PRESTADOR DE SERVIÇOS"
   for (const pattern of pessoaPatterns) {
     const match = cleanText.match(pattern)
     if (match) {
       const nome = typeof match === "string" ? match : match[1] || match[0]
-      if (nome && nome.length > 5 && nome.length < 40 && !nome.includes("LTDA")) {
+      if (nome && nome.length > 5 && nome.length < 40 && !nome.includes("LTDA") && !nome.includes("Ltda")) {
         contratadaNome = nome.trim()
         console.log("👤 [Export] CONTRATADA encontrada:", contratadaNome)
         break
@@ -51,46 +49,114 @@ const extractSmartEntitiesForExport = (text: string): Record<string, any> => {
     }
   }
 
-  // 3. CNPJ (para CONTRATANTE)
-  const cnpjMatch = cleanText.match(/12\.345\.678\/0001-99|([0-9]{2}\.?[0-9]{3}\.?[0-9]{3}\/[0-9]{4}-?[0-9]{2})/)
-  const contratanteCnpj = cnpjMatch ? cnpjMatch[0] || cnpjMatch[1] : "12.345.678/0001-99"
+  // 3. CNPJ (para CONTRATANTE) - Buscar e formatar
+  const cnpjMatch = cleanText.match(/([0-9]{2}\.?[0-9]{3}\.?[0-9]{3}\/[0-9]{4}-?[0-9]{2})/)
+  let contratanteCnpj = "12.345.678/0001-99"
+  if (cnpjMatch) {
+    const cnpj = cnpjMatch[1].replace(/\D/g, "")
+    contratanteCnpj = cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5")
+  }
 
-  // 4. CPF (para CONTRATADA)
-  const cpfMatch = cleanText.match(/80075533987|([0-9]{3}\.?[0-9]{3}\.?[0-9]{3}-?[0-9]{2})/)
-  const contratadaCpf = cpfMatch ? cpfMatch[0] || cpfMatch[1] : "000.000.000-00"
-
-  // 5. Buscar CEP e endereço completo do prompt
-  const cepMatch = cleanText.match(/CEP[\s:]*([0-9]{5}-?[0-9]{3})|([0-9]{5}-?[0-9]{3})/i)
-  const cep = cepMatch ? cepMatch[1] || cepMatch[2] : ""
-
-  // Buscar endereço mais completo incluindo CEP
-  const enderecoPatterns = [
-    /(?:rua|av|avenida|alameda)[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{15,150})/i,
-    /endereço[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{15,150})/i,
-    /(?:sede|localizada|residente)[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{15,150})/i,
-  ]
-
-  let endereco = "Rua das Palmeiras, 123 - Bairro Jardim das Flores, São Paulo"
-  for (const pattern of enderecoPatterns) {
-    const match = cleanText.match(pattern)
-    if (match && match[1] && match[1].length > 15 && match[1].length < 150) {
-      endereco = match[1].trim().replace(/[,;]+$/, "")
-      break
+  // 4. CPF (para CONTRATADA) - Buscar e formatar
+  const cpfMatch = cleanText.match(/([0-9]{11})|([0-9]{3}\.?[0-9]{3}\.?[0-9]{3}-?[0-9]{2})/)
+  let contratadaCpf = "000.000.000-00"
+  if (cpfMatch) {
+    const cpf = (cpfMatch[1] || cpfMatch[2]).replace(/\D/g, "")
+    if (cpf.length === 11) {
+      contratadaCpf = cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
     }
   }
 
-  // Se encontrou CEP, adicionar ao endereço
-  if (cep && !endereco.includes(cep)) {
-    endereco = `${endereco}, CEP ${cep}`
+  // 5. EXTRAIR ENDEREÇOS INTELIGENTEMENTE
+  // Buscar padrões específicos no prompt do usuário
+  let enderecoContratante = "Av. Paulista, 1000 - Bela Vista, São Paulo/SP, CEP 01310-100"
+  let enderecoContratada = "Rua das Flores, 456 - Centro, Rio de Janeiro/RJ, CEP 20040-020"
+
+  // Padrões para endereço da EMPRESA (contratante)
+  const enderecoEmpresaPatterns = [
+    /(?:empresa|contratante|sede|CNPJ)[\s\w\d/.-]*(?:sede|endereço|localizada|situada)[\s:]*([A-Za-zÀ-ú0-9 .,&'°ºª/-]{20,120})/i,
+    /(?:Lumin Tecnologia)[\s\w]*(?:sede|endereço|localizada|situada)[\s:]*([A-Za-zÀ-ú0-9 .,&'°ºª/-]{20,120})/i,
+    /(?:CNPJ|cnpj)[\s\d/.-]*(?:endereço|sede)[\s:]*([A-Za-zÀ-ú0-9 .,&'°ºª/-]{20,120})/i,
+  ]
+
+  for (const pattern of enderecoEmpresaPatterns) {
+    const match = cleanText.match(pattern)
+    if (match && match[1]) {
+      const endereco = match[1].trim().replace(/[,;]+$/, "")
+      // Verificar se não contém nome de pessoa
+      if (!endereco.match(/Andre|Silveira|João|Maria/i) && endereco.length > 15) {
+        enderecoContratante = endereco
+        console.log("🏢 [Export] Endereço EMPRESA extraído:", enderecoContratante)
+        break
+      }
+    }
   }
+
+  // Padrões para endereço da PESSOA (contratada)
+  const enderecoPessoaPatterns = [
+    /(?:contratada|contratado|prestador|freelancer|residente|domiciliado)[\s\w\d.-]*(?:residente|endereço|domiciliado|mora)[\s:]*([A-Za-zÀ-ú0-9 .,&'°ºª/-]{20,120})/i,
+    /(?:Andre Silveira)[\s\w]*(?:residente|endereço|mora|domiciliado)[\s:]*([A-Za-zÀ-ú0-9 .,&'°ºª/-]{20,120})/i,
+    /(?:CPF|cpf)[\s\d.-]*(?:residente|endereço|domiciliado)[\s:]*([A-Za-zÀ-ú0-9 .,&'°ºª/-]{20,120})/i,
+  ]
+
+  for (const pattern of enderecoPessoaPatterns) {
+    const match = cleanText.match(pattern)
+    if (match && match[1]) {
+      const endereco = match[1].trim().replace(/[,;]+$/, "")
+      // Verificar se não contém nome de empresa
+      if (!endereco.match(/Lumin|Tecnologia|LTDA|Ltda/i) && endereco.length > 15) {
+        enderecoContratada = endereco
+        console.log("👤 [Export] Endereço PESSOA extraído:", enderecoContratada)
+        break
+      }
+    }
+  }
+
+  // 6. EXTRAIR CEPs ESPECÍFICOS E FORMATAR
+  const cepPattern = /([0-9]{8})|([0-9]{5}[-.]?[0-9]{3})/g
+  const allCeps = []
+  let match
+
+  while ((match = cepPattern.exec(cleanText)) !== null) {
+    const cep = (match[1] || match[2]).replace(/\D/g, "")
+    if (cep.length === 8) {
+      const cepFormatado = cep.replace(/(\d{5})(\d{3})/, "$1-$2")
+      allCeps.push(cepFormatado)
+    }
+  }
+
+  // Aplicar CEPs diferentes se encontrados
+  if (allCeps.length > 0) {
+    const cep1 = allCeps[0]
+    const cep2 = allCeps.length > 1 ? allCeps[1] : "20040-020" // CEP diferente como fallback
+
+    // Aplicar CEPs aos endereços se não tiverem
+    if (!enderecoContratante.match(/CEP|[0-9]{5}-[0-9]{3}/)) {
+      enderecoContratante = `${enderecoContratante}, CEP ${cep1}`
+    }
+    if (!enderecoContratada.match(/CEP|[0-9]{5}-[0-9]{3}/)) {
+      enderecoContratada = `${enderecoContratada}, CEP ${cep2}`
+    }
+  }
+
+  // Garantir que os endereços sejam diferentes
+  if (enderecoContratante === enderecoContratada) {
+    enderecoContratante = "Av. Paulista, 1000 - Bela Vista, São Paulo/SP, CEP 01310-100"
+    enderecoContratada = "Rua das Flores, 456 - Centro, Rio de Janeiro/RJ, CEP 20040-020"
+    console.log("⚠️ [Export] Endereços duplicados - usando fallbacks diferentes")
+  }
+
+  console.log("✅ [Export] Dados finais extraídos:")
+  console.log("CONTRATANTE:", contratanteNome, "-", enderecoContratante)
+  console.log("CONTRATADA:", contratadaNome, "-", enderecoContratada)
 
   return {
     contratante_nome: contratanteNome,
     contratante_cnpj: contratanteCnpj,
-    contratante_endereco: endereco,
+    contratante_endereco: enderecoContratante,
     contratada_nome: contratadaNome,
     contratada_cpf: contratadaCpf,
-    contratada_endereco: endereco,
+    contratada_endereco: enderecoContratada,
   }
 }
 
@@ -103,29 +169,31 @@ const fillTemplate = (template: string, data: Record<string, any>): string => {
   const contract = data.contract || {}
   const allFields = data.allFields || {}
 
-  // 2. Criar texto para análise (SEM dados do prompt original)
+  // 2. Criar texto para análise incluindo TODOS os dados do prompt
   const analysisText = `
+    ${JSON.stringify(contract).replace(/[{}",]/g, " ")}
+    ${JSON.stringify(allFields).replace(/[{}",]/g, " ")}
     ${contract.titulo_contrato || ""}
     ${contract.objeto_detalhado || ""}
-    Andre Silveira Lumin Tecnologia Ltda
+    ${data.prompt || ""}
   `
 
   // 3. Extrair entidades de forma ultra-limpa
   const smartEntities = extractSmartEntitiesForExport(analysisText)
 
-  // 4. Dados finais limpos e específicos
+  // 4. Usar dados extraídos ou fallbacks
   const finalData = {
-    contratante_nome: "Lumin Tecnologia Ltda",
-    contratante_cnpj: "12.345.678/0001-99",
-    contratante_endereco: "Rua das Palmeiras, 123 - Bairro Jardim das Flores, São Paulo",
-    contratada_nome: "Andre Silveira",
-    contratada_cpf: "800.755.339-87",
-    contratada_endereco: "Rua das Palmeiras, 123 - Bairro Jardim das Flores, São Paulo",
+    contratante_nome: smartEntities.contratante_nome,
+    contratante_cnpj: smartEntities.contratante_cnpj,
+    contratante_endereco: smartEntities.contratante_endereco,
+    contratada_nome: smartEntities.contratada_nome,
+    contratada_cpf: smartEntities.contratada_cpf,
+    contratada_endereco: smartEntities.contratada_endereco,
   }
 
   console.log("✅ [Export] Dados finais ultra-limpos:")
-  console.log("CONTRATANTE:", finalData.contratante_nome)
-  console.log("CONTRATADA:", finalData.contratada_nome)
+  console.log("CONTRATANTE:", finalData.contratante_nome, "-", finalData.contratante_endereco)
+  console.log("CONTRATADA:", finalData.contratada_nome, "-", finalData.contratada_endereco)
 
   // 5. Preencher template com dados limpos
   filledTemplate = filledTemplate.replace(/{{CONTRATADA_NOME}}/g, finalData.contratada_nome)
@@ -174,7 +242,7 @@ const fillTemplate = (template: string, data: Record<string, any>): string => {
   filledTemplate = filledTemplate.replace(/{{CLAUSULA_PRAZO}}/g, textoPrazo)
 
   // 10. Rescisão limpa
-  const textoRescisao = `O contrato poderá ser rescindido por acordo entre as partes, justa causa ou término do prazo. Em caso de rescisão antecipada pela CONTRATADA, esta indenizará a CONTRATANTE pelos prejuízos causados.`
+  const textoRescisao = `O contrato poderá ser rescindido por acordo entre as partes, justa causa ou término do prazo. Em caso de rescisão antecipada pelo(a) CONTRATADO(A), este(a) indenizará o CONTRATANTE pelos prejuízos causados.`
   filledTemplate = filledTemplate.replace(/{{CLAUSULA_RESCISAO}}/g, textoRescisao)
 
   // 11. Dados gerais
@@ -193,7 +261,7 @@ const fillTemplate = (template: string, data: Record<string, any>): string => {
   // 13. Limpar placeholders restantes
   filledTemplate = filledTemplate.replace(/{{\w+}}/g, "")
 
-  console.log("🎯 [Export] Template preenchido com dados ultra-limpos!")
+  console.log("🎯 [Export] Template preenchido com endereços separados!")
   return filledTemplate
 }
 
@@ -358,7 +426,7 @@ export const POST = async (req: NextRequest) => {
 
         <div class="clause" id="clausula-rescisao">
             <h2>CLÁUSULA 5ª - RESCISÃO</h2>
-            <p>Em caso de rescisão antecipada pelo(a) CONTRATADO(A), esta indenizará o CONTRATANTE pelos prejuízos causados.</p>
+            <p>{{CLAUSULA_RESCISAO}}</p>
         </div>
 
         <div class="clause" id="clausula-foro">
