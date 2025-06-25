@@ -1,327 +1,138 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
+import fs from "fs/promises"
+import path from "path"
 
 const ExportSchema = z.object({
-  title: z.string().min(1, "Título é obrigatório"),
-  content: z.string().min(1, "Conteúdo é obrigatório"),
   format: z.enum(["pdf", "word"]),
-  contractType: z.enum(["simple", "advanced"]).optional(),
-  template: z.string().optional().default("classic"),
+  contractData: z.record(z.any()),
 })
 
-// Substituir a função generateClassicHTMLTemplate para usar o mesmo modelo:
+// Função para preencher o template de forma inteligente
+const fillTemplate = (template: string, data: Record<string, any>): string => {
+  let filledTemplate = template
 
-const generateClassicHTMLTemplate = (title: string, content: string, contractType?: string) => {
-  // Se o conteúdo já é HTML (vem da nova função), retorna direto
-  if (content.includes("<!DOCTYPE html>")) {
-    return content
-  }
+  // 1. Extrair os objetos principais para facilitar o acesso
+  const contract = data.contract || {}
+  const allFields = data.allFields || {}
+  const contratada = allFields.contratada || {}
+  const contratante = allFields.contratante || {}
+  const lexmlReferences = data.lexmlReferences || []
 
-  // Caso contrário, processa o conteúdo texto para HTML
-  const processedContent = content
-    .replace(
-      /CONTRATO DE PRESTAÇÃO DE SERVIÇOS PROFISSIONAIS/g,
-      '<h1 class="contract-title">CONTRATO DE PRESTAÇÃO DE SERVIÇO</h1>',
-    )
-    .replace(/\n\n/g, '</p><p class="paragraph">')
-    .replace(/\n/g, "<br>")
+  // 2. Mapear dados das partes
+  filledTemplate = filledTemplate.replace(/{{CONTRATADA_NOME}}/g, contratada.nome || 'Não especificado')
+  filledTemplate = filledTemplate.replace(/{{CONTRATADA_CNPJ}}/g, contratada.cnpj || 'Não especificado')
+  filledTemplate = filledTemplate.replace(/{{CONTRATADA_ENDERECO}}/g, contratada.endereco || 'Não especificado')
+  
+  filledTemplate = filledTemplate.replace(/{{CONTRATANTE_NOME}}/g, contratante.nome || 'Não especificado')
+  filledTemplate = filledTemplate.replace(/{{CONTRATANTE_CPF}}/g, contratante.cpf || 'Não especificado')
+  filledTemplate = filledTemplate.replace(/{{CONTRATANTE_ENDERECO}}/g, contratante.endereco || 'Não especificado')
 
-  return `
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
-    <style>
-        @page {
-            margin: 2cm;
-            size: A4;
-        }
-        
-        body {
-            font-family: 'Times New Roman', serif;
-            font-size: 12pt;
-            line-height: 1.5;
-            color: #000;
-            margin: 0;
-            padding: 20px;
-            background: white;
-        }
-        
-        .contract-container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-        }
-        
-        .paragraph {
-            margin: 10px 0;
-            text-align: justify;
-        }
-        
-        @media print {
-            body { margin: 0; }
-            .contract-container { 
-                box-shadow: none; 
-                margin: 0;
-                padding: 20px;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="contract-container">
-        ${processedContent}
-    </div>
-</body>
-</html>`
+  // 3. Mapear cláusulas principais geradas pela IA
+  filledTemplate = filledTemplate.replace(/{{CLAUSULA_OBJETO}}/g, contract.objeto_detalhado || contract.objeto_principal || 'Não especificado')
+  
+  const obrigacoesContratado = (contract.obrigacoes_contratado || []).map((item: string) => `<li>${item}</li>`).join('')
+  const obrigacoesContratante = (contract.obrigacoes_contratante || []).map((item: string) => `<li>${item}</li>`).join('')
+  filledTemplate = filledTemplate.replace(/{{CLAUSULA_OBRIGACOES_CONTRATADA}}/g, `<ul>${obrigacoesContratado}</ul>`)
+  filledTemplate = filledTemplate.replace(/{{CLAUSULA_OBRIGACOES_CONTRATANTE}}/g, `<ul>${obrigacoesContratante}</ul>`)
+
+  const pagamento = contract.condicoes_pagamento || {}
+  const textoPagamento = `O valor total do presente contrato é de <strong>${pagamento.valor_base || 'a combinar'}</strong>, a ser pago da seguinte forma: ${pagamento.forma_pagamento || 'não especificado'}. Em caso de atraso, incidirá multa de ${pagamento.multas_atraso || 'não aplicável'}.`
+  filledTemplate = filledTemplate.replace(/{{CLAUSULA_PAGAMENTO}}/g, textoPagamento)
+  
+  const prazo = contract.prazo_execucao || {}
+  const textoPrazo = `O presente contrato terá início em <strong>${prazo.inicio || 'data a definir'}</strong> e duração de <strong>${prazo.duracao || 'tempo a definir'}</strong>, com os seguintes marcos de entrega: ${(prazo.marcos || []).join(', ') || 'não aplicável'}.`
+  filledTemplate = filledTemplate.replace(/{{CLAUSULA_PRAZO}}/g, textoPrazo)
+
+  const rescisao = contract.rescisao || {}
+  const textoRescisao = `As condições para rescisão são: ${rescisao.condicoes || 'não especificado'}. As penalidades em caso de rescisão imotivada são: ${rescisao.penalidades || 'não aplicável'}.`
+  filledTemplate = filledTemplate.replace(/{{CLAUSULA_RESCISAO}}/g, textoRescisao)
+
+  // 4. Mapear dados gerais
+  const cidade = allFields.cidade_foro || 'Cidade não especificada'
+  filledTemplate = filledTemplate.replace(/{{CIDADE_FORO}}/g, cidade)
+  filledTemplate = filledTemplate.replace(/{{CIDADE_DATA}}/g, cidade)
+  
+  const dataExtenso = new Date().toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric' })
+  filledTemplate = filledTemplate.replace(/{{DATA_EXTENSO}}/g, dataExtenso)
+
+  // 5. Mapear dados do rodapé
+  filledTemplate = filledTemplate.replace(/{{FOOTER_ENDERECO}}/g, contratada.endereco || '')
+  filledTemplate = filledTemplate.replace(/{{FOOTER_TELEFONE}}/g, contratada.telefone || '')
+  filledTemplate = filledTemplate.replace(/{{FOOTER_SITE}}/g, contratada.site || 'Não informado')
+  filledTemplate = filledTemplate.replace(/{{FOOTER_EMAIL}}/g, contratada.email || 'Não informado')
+
+  // 6. Limpar placeholders restantes
+  filledTemplate = filledTemplate.replace(/{{\w+}}/g, "Não preenchido")
+
+  return filledTemplate
 }
 
-// Template HTML Moderno
-const generateModernHTMLTemplate = (title: string, content: string, contractType?: string) => {
-  const processedContent = content
-    .replace(
-      /CONTRATO DE PRESTAÇÃO DE SERVIÇOS PROFISSIONAIS/g,
-      '<h1 class="contract-title">CONTRATO DE PRESTAÇÃO DE SERVIÇOS PROFISSIONAIS</h1>',
-    )
-    .replace(/CONTRATANTE:/g, '<div class="party-section"><h2 class="party-title">CONTRATANTE</h2>')
-    .replace(/CONTRATADO:/g, '</div><div class="party-section"><h2 class="party-title">CONTRATADO</h2>')
-    .replace(/DATA:/g, '</div><div class="date-section"><h3 class="date-title">DATA:</h3>')
-    .replace(/TÍTULO DO CONTRATO:/g, '</div><h2 class="section-title">TÍTULO DO CONTRATO</h2>')
-    .replace(/OBJETO PRINCIPAL:/g, '<h2 class="section-title">OBJETO PRINCIPAL</h2>')
-    .replace(/OBJETO DETALHADO:/g, '<h2 class="section-title">OBJETO DETALHADO</h2>')
-    .replace(/ESPECIFICAÇÕES TÉCNICAS:/g, '<h2 class="section-title">ESPECIFICAÇÕES TÉCNICAS</h2>')
-    .replace(/OBRIGAÇÕES DO CONTRATADO:/g, '<h2 class="section-title">OBRIGAÇÕES DO CONTRATADO</h2>')
-    .replace(/OBRIGAÇÕES DO CONTRATANTE:/g, '<h2 class="section-title">OBRIGAÇÕES DO CONTRATANTE</h2>')
-    .replace(/CONDIÇÕES DE PAGAMENTO:/g, '<h2 class="section-title">CONDIÇÕES DE PAGAMENTO</h2>')
-    .replace(/PRAZO DE EXECUÇÃO:/g, '<h2 class="section-title">PRAZO DE EXECUÇÃO</h2>')
-    .replace(/CLAUSULAS ESPECIAIS:/g, '<h2 class="section-title">CLÁUSULAS ESPECIAIS</h2>')
-    .replace(/RESCISÃO:/g, '<h2 class="section-title">RESCISÃO</h2>')
-    .replace(/PROPRIEDADE INTELECTUAL:/g, '<h2 class="section-title">PROPRIEDADE INTELECTUAL</h2>')
-    .replace(/CONFIDENCIALIDADE:/g, '<h2 class="section-title">CONFIDENCIALIDADE</h2>')
-    .replace(/GARANTIAS:/g, '<h2 class="section-title">GARANTIAS</h2>')
-    .replace(/DISPOSIÇÕES LEGAIS:/g, '<h2 class="section-title">DISPOSIÇÕES LEGAIS</h2>')
-    .replace(/REFERÊNCIAS LEGAIS:/g, '<h2 class="section-title">REFERÊNCIAS LEGAIS</h2>')
-    .replace(/- ([A-Z][^:]+):/g, '<div class="item"><strong>$1:</strong>')
-    .replace(/\n\n/g, '</div><p class="paragraph">')
-    .replace(/\n/g, "<br>")
-
-  return `
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
-    <style>
-        @page {
-            margin: 2cm;
-            size: A4;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            font-size: 11pt;
-            line-height: 1.7;
-            color: #2d3748;
-            margin: 0;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-        }
-        
-        .contract-container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            padding: 50px;
-            border-radius: 15px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-        }
-        
-        .contract-title {
-            text-align: center;
-            font-size: 20pt;
-            font-weight: 300;
-            margin: 0 0 40px 0;
-            padding: 30px 0;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 10px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-        
-        .party-section {
-            background: #f7fafc;
-            padding: 25px;
-            margin: 20px 0;
-            border-radius: 10px;
-            border-left: 5px solid #667eea;
-        }
-        
-        .party-title {
-            font-size: 14pt;
-            font-weight: 600;
-            margin: 0 0 15px 0;
-            color: #667eea;
-        }
-        
-        .date-section {
-            text-align: center;
-            background: #edf2f7;
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 8px;
-        }
-        
-        .section-title {
-            font-size: 13pt;
-            font-weight: 600;
-            margin: 30px 0 15px 0;
-            color: #2d3748;
-            padding: 10px 0;
-            border-bottom: 2px solid #e2e8f0;
-            position: relative;
-        }
-        
-        .section-title::before {
-            content: "";
-            position: absolute;
-            bottom: -2px;
-            left: 0;
-            width: 50px;
-            height: 2px;
-            background: #667eea;
-        }
-        
-        .item {
-            margin: 15px 0;
-            padding: 10px 0;
-        }
-        
-        .paragraph {
-            margin: 15px 0;
-            text-align: justify;
-            line-height: 1.8;
-        }
-        
-        .signature-section {
-            margin-top: 60px;
-            padding-top: 40px;
-            border-top: 3px solid #e2e8f0;
-        }
-        
-        .signature-line {
-            margin: 50px 0;
-            text-align: center;
-            padding: 20px;
-            background: #f7fafc;
-            border-radius: 8px;
-        }
-        
-        .signature-line::before {
-            content: "";
-            display: block;
-            width: 350px;
-            height: 2px;
-            background: #667eea;
-            margin: 0 auto 15px auto;
-        }
-        
-        .footer {
-            margin-top: 40px;
-            padding-top: 30px;
-            border-top: 2px solid #e2e8f0;
-            text-align: center;
-            font-size: 9pt;
-            color: #718096;
-            background: #f7fafc;
-            padding: 20px;
-            border-radius: 8px;
-        }
-        
-        @media print {
-            body { 
-                background: white !important;
-                margin: 0; 
-            }
-            .contract-container { 
-                box-shadow: none; 
-                margin: 0;
-                padding: 20px;
-                border-radius: 0;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="contract-container">
-        <p class="paragraph">${processedContent}</p>
-        
-        <div class="signature-section">
-            <div class="signature-line">
-                <strong>CONTRATANTE</strong><br>
-                Nome: _________________________________<br>
-                CPF/CNPJ: _____________________________<br>
-                Assinatura: ____________________________
-            </div>
-            
-            <div class="signature-line">
-                <strong>CONTRATADO</strong><br>
-                Nome: _________________________________<br>
-                CPF: __________________________________<br>
-                Assinatura: ____________________________
-            </div>
-        </div>
-        
-        <div class="footer">
-            <p>Documento gerado em ${new Date().toLocaleDateString("pt-BR")} às ${new Date().toLocaleTimeString("pt-BR")}</p>
-            <p><strong>Este documento foi gerado por IA especializada em direito.</strong> Consulte um advogado antes de usar em situações formais.</p>
-        </div>
-    </div>
-</body>
-</html>`
-}
 
 export const POST = async (req: NextRequest) => {
   try {
     const body = await req.json()
-    const parsed = ExportSchema.safeParse(body)
+    const validation = ExportSchema.safeParse(body)
 
-    if (!parsed.success) {
-      return NextResponse.json({ error: "Dados inválidos: " + parsed.error.issues[0]?.message }, { status: 400 })
+    if (!validation.success) {
+      console.error("[Export] Dados de entrada inválidos:", validation.error.errors)
+      return NextResponse.json({ error: "Dados de entrada inválidos", details: validation.error.errors }, { status: 400 })
     }
 
-    const { title, content, format, contractType, template = "classic" } = parsed.data
+    const { format, contractData } = validation.data
 
-    let htmlContent = ""
-
-    // Aplicar template baseado na seleção
-    switch (template) {
-      case "modern":
-        htmlContent = generateModernHTMLTemplate(title, content, contractType)
-        break
-      case "classic":
-      default:
-        htmlContent = generateClassicHTMLTemplate(title, content, contractType)
-        break
+    // Validação extra dos campos essenciais
+    if (!contractData || typeof contractData !== 'object') {
+      console.error("[Export] contractData ausente ou inválido.")
+      return NextResponse.json({ error: "Dados do contrato ausentes ou inválidos." }, { status: 400 })
+    }
+    if (!contractData.template) {
+      console.warn("[Export] Campo 'template' ausente em contractData. Usando 'classic-professional' como padrão.")
     }
 
-    // Criar blob e retornar
-    const blob = new Blob([htmlContent], { type: "text/html" })
-    const buffer = await blob.arrayBuffer()
+    // Determinar qual template usar
+    const templateName = contractData.template || 'classic-professional'; // 'classic-professional' como padrão
+    const templatePath = path.join(process.cwd(), "lib", "templates", `${templateName}.html`)
+    let htmlTemplate: string | null = null;
+    let triedFallback = false;
 
-    return new NextResponse(buffer, {
-      headers: {
-        "Content-Type": "text/html",
-        "Content-Disposition": `attachment; filename="${title.replace(/[^a-zA-Z0-9\s\-_]/g, "").replace(/\s+/g, "_")}.html"`,
-      },
-    })
+    try {
+      htmlTemplate = await fs.readFile(templatePath, "utf-8")
+      console.log(`[Export] Template '${templateName}.html' carregado com sucesso.`)
+    } catch (err) {
+      console.warn(`[Export] Template '${templateName}.html' não encontrado. Tentando fallback 'classic-professional.html'`)
+      triedFallback = true;
+      const fallbackPath = path.join(process.cwd(), "lib", "templates", "classic-professional.html")
+      try {
+        htmlTemplate = await fs.readFile(fallbackPath, "utf-8")
+        console.log(`[Export] Fallback 'classic-professional.html' carregado com sucesso.`)
+      } catch (fallbackErr) {
+        console.error(`[Export] Nenhum template encontrado! Falha crítica.`)
+        return NextResponse.json({ error: `Template '${templateName}.html' e fallback 'classic-professional.html' não encontrados.` }, { status: 404 })
+      }
+    }
+
+    // Preencher o template com os dados
+    const finalHtml = fillTemplate(htmlTemplate, contractData)
+
+    if (format === "pdf") {
+      return NextResponse.json({ html: finalHtml })
+    }
+
+    if (format === "word") {
+      const headers = new Headers()
+      const title = contractData.contract?.titulo_contrato || "contrato"
+      const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      headers.set("Content-Type", "application/vnd.ms-word")
+      headers.set("Content-Disposition", `attachment; filename=${safeTitle}.doc`)
+
+      return new NextResponse(finalHtml, { headers })
+    }
+
+    return NextResponse.json({ error: "Formato de exportação não suportado" }, { status: 400 })
   } catch (error) {
-    console.error("Erro na exportação:", error)
-    return NextResponse.json({ error: "Erro interno na exportação" }, { status: 500 })
+    console.error("[Export] Erro na exportação do contrato:", error)
+    const errorMessage = error instanceof Error ? error.message : "Ocorreu um erro desconhecido no servidor"
+    return NextResponse.json({ error: "Erro interno do servidor", details: errorMessage }, { status: 500 })
   }
 }

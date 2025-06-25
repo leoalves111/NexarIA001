@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
+import { OpenAI } from "openai"
 
 /**
  * FUNÇÃO ULTRA-INTELIGENTE para formatar e-mails
@@ -104,425 +105,122 @@ const formatPhone = (text: string): string => {
  */
 const extractCompleteEntities = (text: string): Record<string, any> => {
   const entities: Record<string, any> = {}
+  const cleanText = text.replace(/\s+/g, ' ').trim()
+  console.log('🔍 Texto para análise:', cleanText)
 
-  // Normalizar texto preservando acentos mas removendo caracteres especiais desnecessários
-  const cleanText = text
-    .replace(/\s+/g, " ") // Normalizar espaços
-    .trim()
-
-  console.log("🔍 Texto para análise:", cleanText)
-
-  // FUNÇÃO ULTRA-INTELIGENTE para limpar e extrair números de documentos
-  const extractAndFormatDocument = (text: string, type: "cpf" | "cnpj"): string => {
-    // Remover TODOS os caracteres que não são dígitos
-    const numbersOnly = text.replace(/[^\d]/g, "")
-
-    if (type === "cpf" && numbersOnly.length === 11) {
-      // Formatar CPF: 123.456.789-00
-      return numbersOnly.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
-    }
-
-    if (type === "cnpj" && numbersOnly.length === 14) {
-      // Formatar CNPJ: 12.345.678/0001-99
-      return numbersOnly.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5")
-    }
-
-    return ""
-  }
-
-  // FUNÇÃO ULTRA-INTELIGENTE para extrair endereços com ruído
-  const extractAddress = (text: string): string[] => {
-    const addresses = []
-
-    // Padrões MEGA-ROBUSTOS para endereços
-    const addressPatterns = [
-      // Padrões básicos com flexibilidade total
-      /(?:^|[^a-zA-ZÀ-ÚÇ])((?:Rua|Av\.|Avenida|Alameda|R\.|Travessa|Estrada)[^,\n]{10,100}(?:,\s*[^,\n]{5,50})*)/gi,
-
-      // Padrões específicos conhecidos
-      /(Rua\s+das\s+Palmeiras[^,\n]*(?:,\s*[^,\n]*)*)/gi,
-      /(Av\.\s+Paulista[^,\n]*(?:,\s*[^,\n]*)*)/gi,
-      /(Rua\s+Nova\s+Esperança[^,\n]*(?:,\s*[^,\n]*)*)/gi,
-      /(Rua\s+das\s+Acácias[^,\n]*(?:,\s*[^,\n]*)*)/gi,
-
-      // Padrões com contexto
-      /(?:residente|mora|reside|localizada|situada|sediada|endereço)[\s\w]*?(?:na|em|à|:)\s*([^,\n]{15,150})/gi,
-
-      // Padrões com CEP
-      /([^,\n]*CEP[^,\n]*\d{5}[-\s]?\d{3}[^,\n]*)/gi,
-
-      // Padrões com números (indicativo de endereço)
-      /((?:Rua|Av\.|Avenida|Alameda)[^,\n]*\d+[^,\n]*(?:,\s*[^,\n]*)*)/gi,
-    ]
-
-    for (const pattern of addressPatterns) {
-      const matches = [...text.matchAll(pattern)]
-      for (const match of matches) {
-        let address = match[1] || match[0]
-
-        // Limpar o endereço
-        address = address
-          .replace(/^(na|em|à|:)\s*/i, "") // Remove prefixos
-          .replace(/[#$%¨&"!@#$%¨&*()_+{}^:?><]/g, " ") // Remove caracteres especiais
-          .replace(/\s+/g, " ") // Normaliza espaços
-          .trim()
-
-        // Validar se é um endereço válido
-        if (
-          address.length > 15 &&
-          address.length < 200 &&
-          (address.includes(",") ||
-            address.includes("-") ||
-            address.includes("CEP") ||
-            address.includes("Bairro") ||
-            /\d/.test(address)) &&
-          !addresses.some(
-            (existing) => existing.includes(address.substring(0, 20)) || address.includes(existing.substring(0, 20)),
-          )
-        ) {
-          addresses.push(address)
-        }
-      }
-    }
-
-    return addresses
-  }
-
-  // NOVA FUNÇÃO: Extrair e-mails com formatação inteligente
-  const extractEmails = (text: string): string[] => {
-    const emails = []
-
-    const emailPatterns = [
-      // E-mails já formatados corretamente
-      /([a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi,
-      // E-mails sem @ (padrão: nome dominio.com)
-      /(?:e-mail|email)[\s:]*([a-zA-Z0-9._-]+)\s+([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi,
-      // Padrão específico para domínios conhecidos
-      /([a-zA-Z0-9._-]+)\s+(gmail\.com|hotmail\.com|yahoo\.com|outlook\.com|live\.com|icloud\.com|uol\.com\.br|bol\.com\.br|terra\.com\.br|ig\.com\.br|impulsocriativo\.com\.br)/gi,
-    ]
-
-    for (const pattern of emailPatterns) {
-      const matches = [...text.matchAll(pattern)]
-      for (const match of matches) {
-        let email = ""
-
-        if (match[0].includes("@")) {
-          // E-mail já formatado
-          email = match[1]
-        } else if (match[2]) {
-          // E-mail sem @, precisa formatar
-          email = formatEmail(`${match[1]} ${match[2]}`)
-        } else {
-          // Outros padrões
-          email = formatEmail(match[0].replace(/(?:e-mail|email)[\s:]*/i, ""))
-        }
-
-        if (email && email.includes("@") && !emails.includes(email)) {
-          emails.push(email)
-        }
-      }
-    }
-
-    return emails
-  }
-
-  // NOVA FUNÇÃO: Extrair telefones com formatação inteligente
-  const extractPhones = (text: string): string[] => {
-    const phones = []
-
-    const phonePatterns = [
-      // Telefones já formatados
-      /(?:telefone|tel|fone|celular)[\s:]*($$[0-9]{2}$$\s*[0-9]{4,5}-?[0-9]{4})/gi,
-      // Telefones com DDD separado
-      /(?:telefone|tel|fone|celular)[\s:]*([0-9]{2})\s+([0-9]{4,5})-?([0-9]{4})/gi,
-      // Telefones com código do país
-      /(?:telefone|tel|fone|celular)[\s:]*(\+55\s*[0-9]{2}\s*[0-9]{4,5}-?[0-9]{4})/gi,
-      // Sequências de números que podem ser telefones
-      /([0-9]{2}\s+[0-9]{4,5}-?[0-9]{4})/g,
-    ]
-
-    for (const pattern of phonePatterns) {
-      const matches = [...text.matchAll(pattern)]
-      for (const match of matches) {
-        let phone = ""
-
-        if (match[3]) {
-          // Padrão: DDD PREFIXO SUFIXO
-          phone = formatPhone(`${match[1]} ${match[2]}${match[3]}`)
-        } else {
-          // Outros padrões
-          phone = formatPhone(match[1] || match[0])
-        }
-
-        if (phone && phone.length > 8 && !phones.includes(phone)) {
-          phones.push(phone)
-        }
-      }
-    }
-
-    return phones
-  }
-
-  // 1. EXTRAIR EMPRESA CONTRATANTE (MEGA-INTELIGENTE)
-  const empresaContratantePatterns = [
-    /(?:empresa\s+contratante\s+se\s+chama|A\s+empresa\s+contratante\s+é)\s*([A-ZÀ-ÚÇ][\w\sÀ-ÚÇ&.,'-]+(?:LTDA|S\.A\.|EIRELI|ME|EPP|Tecnologia|Serviços|Limpeza|Solutions|Digital|Agência de Marketing))/gi,
-    /([A-ZÀ-ÚÇ][\w\sÀ-ÚÇ&.,'-]+(?:LTDA|S\.A\.|EIRELI|ME|EPP|Tecnologia|Serviços|Limpeza|Solutions|Digital|Agência de Marketing))(?=\s*,?\s*inscrita\s+no\s+CNPJ)/gi,
-  ]
-  let empresaNome = ""
-  for (const pattern of empresaContratantePatterns) {
-    const matches = [...text.matchAll(pattern)]
-    if (matches.length > 0 && matches[0][1]) {
-      const nome = matches[0][1].trim()
-      if (!nome.includes("Rua") && !nome.includes("Av.") && !nome.includes("CEP")) {
-        empresaNome = nome
-        break
-      }
-    }
-  }
-
-  // 2. EXTRAIR SÓCIOS DA EMPRESA (ULTRA-INTELIGENTE)
-  const sociosPatterns = [
-    /(?:sócios?\s+responsáveis?\s+são|seus\s+sócios?\s+responsáveis?\s+são):\s*([\s\S]*?)(?=\n\n|A\s+contratada|$)/gi,
-    /(?:sócios?\s+são|representada\s+por):\s*([\s\S]*?)(?=\n\n|A\s+contratada|$)/gi,
+  // Lista de campos esperados e padrões
+  const fields = [
+    // Contratante
+    { key: 'contratante_nome', patterns: [/contratante[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i] },
+    { key: 'contratante_razao_social', patterns: [/raz[aã]o social[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i] },
+    { key: 'contratante_nome_fantasia', patterns: [/nome fantasia[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i] },
+    { key: 'contratante_cnpj', patterns: [/CNPJ[\s:ºnº]*([0-9.\-\/]{11,20})/i] },
+    { key: 'contratante_inscricao_estadual', patterns: [/inscri[cç][aã]o estadual[\s:]*([A-Za-z0-9.\-\/]{3,30})/i] },
+    { key: 'contratante_endereco', patterns: [/endere[cç]o[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,100})/i] },
+    { key: 'contratante_bairro', patterns: [/bairro[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,50})/i] },
+    { key: 'contratante_cep', patterns: [/CEP[\s:]*([0-9\-]{8,10})/i] },
+    { key: 'contratante_cidade', patterns: [/cidade[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,50})/i] },
+    { key: 'contratante_estado', patterns: [/estado[\s:]*([A-Za-zÀ-ú]{2,30})/i, /UF[\s:]*([A-Za-z]{2})/i] },
+    { key: 'contratante_pais', patterns: [/pa[ií]s[\s:]*([A-Za-zÀ-ú ]{3,30})/i] },
+    { key: 'contratante_email', patterns: [/e[- ]?mail[\s:]*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/gi] },
+    { key: 'contratante_telefone', patterns: [/telefone[\s:]*([0-9 ()-]{8,20})/gi, /celular[\s:]*([0-9 ()-]{8,20})/gi] },
+    // Contratado
+    { key: 'contratado_nome', patterns: [/contratada[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i, /prestador[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i] },
+    { key: 'contratado_cpf', patterns: [/CPF[\s:]*([0-9.\-\/]{11,20})/i] },
+    { key: 'contratado_rg', patterns: [/RG[\s:]*([A-Za-z0-9.-]{5,20})/i] },
+    { key: 'contratado_endereco', patterns: [/endere[cç]o[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,100})/i] },
+    { key: 'contratado_bairro', patterns: [/bairro[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,50})/i] },
+    { key: 'contratado_cep', patterns: [/CEP[\s:]*([0-9\-]{8,10})/i] },
+    { key: 'contratado_cidade', patterns: [/cidade[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,50})/i] },
+    { key: 'contratado_estado', patterns: [/estado[\s:]*([A-Za-zÀ-ú]{2,30})/i, /UF[\s:]*([A-Za-z]{2})/i] },
+    { key: 'contratado_pais', patterns: [/pa[ií]s[\s:]*([A-Za-zÀ-ú ]{3,30})/i] },
+    { key: 'contratado_email', patterns: [/e[- ]?mail[\s:]*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/gi] },
+    { key: 'contratado_telefone', patterns: [/telefone[\s:]*([0-9 ()-]{8,20})/gi, /celular[\s:]*([0-9 ()-]{8,20})/gi] },
+    { key: 'contratado_nacionalidade', patterns: [/nacionalidade[\s:]*([A-Za-zÀ-ú ]{3,30})/i] },
+    { key: 'contratado_profissao', patterns: [/profiss[aã]o[\s:]*([A-Za-zÀ-ú ]{3,30})/i] },
+    { key: 'contratado_data_nascimento', patterns: [/nascimento[\s:]*([0-9/\-]{8,12})/i] },
+    // Sócios
+    { key: 'socios', patterns: [/s[óo]cio[s]?:? ([A-Za-zÀ-ú0-9 .,&'-]{3,100}(?:, [A-Za-zÀ-ú0-9 .,&'-]{3,100})*)/i] },
   ]
 
-  const socios = []
-  for (const pattern of sociosPatterns) {
-    const matches = [...text.matchAll(pattern)]
-    if (matches.length > 0) {
-      const sociosText = matches[0][1]
-
-      // Extrair cada sócio individualmente
-      const socioIndividualPatterns = [
-        /([A-ZÀ-ÚÇ][a-zà-úç]+(?:\s+[A-ZÀ-ÚÇ][a-zà-úç]+){1,4}),\s*CPF\s*([0-9]{3}\.?[0-9]{3}\.?[0-9]{3}[-]?[0-9]{2})[^,]*?,\s*RG\s*([A-Z]{2}-?[0-9]{2}\.?[0-9]{3}\.?[0-9]{3})[^,]*?,\s*residente\s+(?:à|na|em)\s*([^,]+(?:,\s*[^,]+)*?)(?:,\s*(?:e-mail|email)\s*([^\s,]+))?(?:,\s*telefone\s*([0-9\s$$$$-]+))?/gi,
-      ]
-
-      for (const socioPattern of socioIndividualPatterns) {
-        const socioMatches = [...sociosText.matchAll(socioPattern)]
-        for (const socioMatch of socioMatches) {
-          const socio = {
-            nome: socioMatch[1]?.trim(),
-            cpf: extractAndFormatDocument(socioMatch[2] || "", "cpf"),
-            rg: socioMatch[3]?.trim(),
-            endereco: socioMatch[4]?.trim(),
-            email: socioMatch[5] ? formatEmail(socioMatch[5].trim()) : "",
-            telefone: socioMatch[6] ? formatPhone(socioMatch[6].trim()) : "",
-          }
-
-          if (socio.nome && socio.cpf) {
-            socios.push(socio)
-          }
+  // Extração principal
+  fields.forEach(({ key, patterns }) => {
+    let found = false
+    for (const pattern of patterns) {
+      let match
+      if (pattern.flags && pattern.flags.includes('g')) {
+        // múltiplos (e-mails, telefones, sócios)
+        const results = []
+        while ((match = pattern.exec(cleanText)) !== null) {
+          if (match[1]) results.push(match[1].trim())
         }
-      }
-      break
-    }
-  }
-
-  // 3. EXTRAIR CONTRATADA PRINCIPAL (MEGA-INTELIGENTE)
-  const pessoaContratadaPatterns = [
-    /(?:A\s+contratada\s+é|contratada\s+é)\s*([A-ZÀ-ÚÇ][a-zà-úç]+(?:\s+[A-ZÀ-ÚÇ][a-zà-úç]+){1,5})(?:,\s*nome\s+social\s*([A-ZÀ-ÚÇ][\w\sÀ-ÚÇ&.,'-]+))?/gi,
-    /([A-ZÀ-ÚÇ][a-zà-úç]+(?:\s+[A-ZÀ-ÚÇ][a-zà-úç]+){1,5})(?=\s*,\s*nacionalidade)/gi, // Nome antes de "nacionalidade"
-    /([A-ZÀ-ÚÇ][a-zà-úç]+(?:\s+[A-ZÀ-ÚÇ][a-zà-úç]+){1,5})(?=\s*,\s*nome\s+social)/gi, // Nome antes de "nome social"
-  ]
-  let pessoaNome = ""
-  let nomeSocial = ""
-  for (const pattern of pessoaContratadaPatterns) {
-    const matches = [...text.matchAll(pattern)]
-    if (matches.length > 0 && matches[0][1]) {
-      const nome = matches[0][1].trim()
-      if (!nome.includes("Rua") && !nome.includes("Av.") && !nome.includes("CEP") && nome.length > 5) {
-        pessoaNome = nome
-        if (matches[0][2]) {
-          // Captura nome social se presente
-          nomeSocial = matches[0][2].trim()
+        if (results.length > 0) {
+          entities[key] = results
+          found = true
+          console.log(`🟢 Extraído ${key}:`, results)
+          break
         }
-        break
-      }
-    }
-  }
-
-  // 4. EXTRAIR CPF DA CONTRATADA (PRÓXIMO AO NOME)
-  let cpfContratada = ""
-  if (pessoaNome) {
-    const textoProximoContratada = text.substring(
-      Math.max(0, text.indexOf(pessoaNome) - 50),
-      Math.min(text.length, text.indexOf(pessoaNome) + 300),
-    )
-    const cpfPatterns = [
-      /CPF[^0-9]*(\d{3}[^\d]*\d{3}[^\d]*\d{3}[^\d]*\d{2})/gi,
-      /(?:CPF|cpf)[^0-9]*([0-9]{11})/gi,
-      /(\d{3}[^\d]{0,3}\d{3}[^\d]{0,3}\d{3}[^\d]{0,3}\d{2})/g,
-    ]
-
-    for (const pattern of cpfPatterns) {
-      const matches = [...textoProximoContratada.matchAll(pattern)]
-      for (const match of matches) {
-        const formatted = extractAndFormatDocument(match[1], "cpf")
-        if (formatted && !socios.some((s) => s.cpf === formatted)) {
-          // Não deve ser CPF de sócio
-          cpfContratada = formatted
+      } else {
+        match = cleanText.match(pattern)
+        if (match && match[1]) {
+          entities[key] = match[1].trim()
+          found = true
+          console.log(`🟢 Extraído ${key}:`, entities[key])
           break
         }
       }
-      if (cpfContratada) break
     }
-  }
-
-  // 5. EXTRAIR CNPJ DA EMPRESA
-  let cnpjNumero = ""
-  if (empresaNome) {
-    const textoProximoContratante = text.substring(
-      text.indexOf(empresaNome),
-      Math.min(text.length, text.indexOf(empresaNome) + 200),
-    )
-    const cnpjPatterns = [
-      /CNPJ[^0-9]*(\d{2}[^\d]*\d{3}[^\d]*\d{3}[^\d]*\d{4}[^\d]*\d{2})/gi,
-      /(?:CNPJ|cnpj)[^0-9]*([0-9]{14})/gi,
-      /(\d{2}[^\d]{0,3}\d{3}[^\d]{0,3}\d{3}[^\d]{0,3}\d{4}[^\d]{0,3}\d{2})/g,
-    ]
-
-    for (const pattern of cnpjPatterns) {
-      const matches = [...textoProximoContratante.matchAll(pattern)]
-      for (const match of matches) {
-        const formatted = extractAndFormatDocument(match[1], "cnpj")
-        if (formatted) {
-          cnpjNumero = formatted
-          break
-        }
-      }
-      if (cnpjNumero) break
+    if (!found) {
+      entities[key] = '[Não Informado]'
+      console.log(`🔴 Não encontrado ${key}`)
     }
-  }
-
-  // 6. EXTRAIR ENDEREÇOS, E-MAILS E TELEFONES
-  const enderecosEncontrados = extractAddress(text)
-  const emailsEncontrados = extractEmails(text)
-  const telefonesEncontrados = extractPhones(text)
-
-  // 7. MAPEAR ENDEREÇOS INTELIGENTEMENTE
-  let enderecoEmpresa = ""
-  let enderecoContratada = ""
-
-  if (enderecosEncontrados.length > 0) {
-    // Identificar endereço da empresa (geralmente com "sede")
-    enderecoEmpresa =
-      enderecosEncontrados.find(
-        (e) =>
-          e.toLowerCase().includes("sede") ||
-          e.toLowerCase().includes("sala") ||
-          e.toLowerCase().includes("andar") ||
-          (empresaNome && text.indexOf(e) < text.indexOf(pessoaNome || "zzz")),
-      ) || enderecosEncontrados[0]
-
-    // Identificar endereço da contratada (geralmente residencial)
-    enderecoContratada =
-      enderecosEncontrados.find(
-        (e) =>
-          e.toLowerCase().includes("residente") ||
-          e.toLowerCase().includes("domiciliado") ||
-          (pessoaNome && text.indexOf(e) > text.indexOf(pessoaNome)),
-      ) || (enderecosEncontrados.length > 1 ? enderecosEncontrados[1] : enderecosEncontrados[0])
-  }
-
-  // 8. MAPEAR E-MAILS E TELEFONES INTELIGENTEMENTE
-  let emailEmpresa = ""
-  let emailContratada = ""
-  let telefoneEmpresa = ""
-  let telefoneContratada = ""
-
-  if (emailsEncontrados.length > 0) {
-    emailEmpresa = emailsEncontrados.find((e) => e.includes("impulsocriativo")) || emailsEncontrados[0]
-    emailContratada =
-      emailsEncontrados.find(
-        (e) => e.includes("juliana") || e.includes("gmail") || (e !== emailEmpresa && emailsEncontrados.length > 1),
-      ) || (emailsEncontrados.length > 1 ? emailsEncontrados[1] : "")
-  }
-
-  if (telefonesEncontrados.length > 0) {
-    telefoneEmpresa = telefonesEncontrados[0]
-    telefoneContratada = telefonesEncontrados.length > 1 ? telefonesEncontrados[1] : ""
-  }
-
-  // 9. EXTRAIR CIDADES
-  const cidadePattern =
-    /(São Paulo|Rio de Janeiro|Belo Horizonte|Salvador|Brasília|Fortaleza|Recife|Porto Alegre|Curitiba|Goiânia|Belém|Manaus|Campinas|Santos|Guarulhos|Gramado)(?:\/[A-Z]{2})?/gi
-  const cidadeMatches = [...text.matchAll(cidadePattern)]
-
-  // 10. MAPEAR DADOS EXTRAÍDOS
-  if (pessoaNome) {
-    entities.contratado_nome = nomeSocial ? `${pessoaNome} (Nome Social: ${nomeSocial})` : pessoaNome
-  }
-
-  if (empresaNome) {
-    entities.contratante_nome = empresaNome
-  }
-
-  if (cpfContratada) {
-    entities.contratado_cpf = cpfContratada
-  }
-
-  if (cnpjNumero) {
-    entities.contratante_cnpj = cnpjNumero
-  }
-
-  if (enderecoEmpresa) {
-    entities.contratante_endereco = enderecoEmpresa
-    entities.endereco_empresa = enderecoEmpresa
-  }
-
-  if (enderecoContratada) {
-    entities.contratado_endereco = enderecoContratada
-    entities.endereco_funcionario = enderecoContratada
-  }
-
-  if (emailEmpresa) {
-    entities.contratante_email = emailEmpresa
-    entities.email_empresa = emailEmpresa
-  }
-
-  if (emailContratada) {
-    entities.contratado_email = emailContratada
-    entities.email_funcionario = emailContratada
-  }
-
-  if (telefoneEmpresa) {
-    entities.contratante_telefone = telefoneEmpresa
-    entities.telefone_empresa = telefoneEmpresa
-  }
-
-  if (telefoneContratada) {
-    entities.contratado_telefone = telefoneContratada
-    entities.telefone_funcionario = telefoneContratada
-  }
-
-  if (cidadeMatches.length > 0) {
-    const cidadeCompleta = cidadeMatches[0][0]
-    entities.cidade = cidadeCompleta.split("/")[0].trim()
-    entities.local = cidadeCompleta.split("/")[0].trim()
-  }
-
-  // 11. ADICIONAR SÓCIOS AOS DADOS
-  if (socios.length > 0) {
-    entities.socios = socios
-  }
-
-  // Log detalhado para debug
-  console.log("🎯 Entidades Extraídas ULTRA-INTELIGENTES:", {
-    contratante: entities.contratante_nome,
-    contratado: entities.contratado_nome,
-    cpf: entities.contratado_cpf,
-    cnpj: entities.contratante_cnpj,
-    endereco_funcionario: entities.contratado_endereco,
-    endereco_empresa: entities.contratante_endereco,
-    email_funcionario: entities.contratado_email,
-    email_empresa: entities.contratante_email,
-    telefone_funcionario: entities.contratado_telefone,
-    telefone_empresa: entities.contratante_telefone,
-    cidade: entities.cidade,
-    socios: socios,
-    total_campos: Object.keys(entities).length,
   })
 
+  // Fallback: busca por linhas para campos principais
+  const lines = text.split(/\n|\r/)
+  lines.forEach((line) => {
+    fields.forEach(({ key }) => {
+      if ((!entities[key] || entities[key] === '[Não Informado]') && /[A-Za-zÀ-ú]/.test(line)) {
+        if (key.includes('contratante') && /contratante/i.test(line)) {
+          entities[key] = line.replace(/.*contratante[\s:ºnº]*/i, '').trim() || '[Não Informado]'
+        }
+        if (key.includes('contratado') && /contratada|prestador/i.test(line)) {
+          entities[key] = line.replace(/.*(contratada|prestador)[\s:ºnº]*/i, '').trim() || '[Não Informado]'
+        }
+        if (key.includes('cnpj') && /CNPJ/i.test(line)) {
+          entities[key] = line.replace(/.*CNPJ[\s:ºnº]*/i, '').trim() || '[Não Informado]'
+        }
+        if (key.includes('cpf') && /CPF/i.test(line)) {
+          entities[key] = line.replace(/.*CPF[\s:ºnº]*/i, '').trim() || '[Não Informado]'
+        }
+        if (key.includes('rg') && /RG/i.test(line)) {
+          entities[key] = line.replace(/.*RG[\s:ºnº]*/i, '').trim() || '[Não Informado]'
+        }
+        if (key.includes('endereco') && /endere[cç]o/i.test(line)) {
+          entities[key] = line.replace(/.*endere[cç]o[\s:ºnº]*/i, '').trim() || '[Não Informado]'
+        }
+        if (key.includes('bairro') && /bairro/i.test(line)) {
+          entities[key] = line.replace(/.*bairro[\s:ºnº]*/i, '').trim() || '[Não Informado]'
+        }
+        if (key.includes('cep') && /CEP/i.test(line)) {
+          entities[key] = line.replace(/.*CEP[\s:ºnº]*/i, '').trim() || '[Não Informado]'
+        }
+        if (key.includes('cidade') && /cidade/i.test(line)) {
+          entities[key] = line.replace(/.*cidade[\s:ºnº]*/i, '').trim() || '[Não Informado]'
+        }
+        if (key.includes('estado') && (/estado/i.test(line) || /UF/i.test(line))) {
+          entities[key] = line.replace(/.*(estado|UF)[\s:ºnº]*/i, '').trim() || '[Não Informado]'
+        }
+      }
+    })
+  })
+
+  // Garantir todos os campos esperados
+  fields.forEach(({ key }) => {
+    if (!entities[key] || (Array.isArray(entities[key]) && entities[key].length === 0)) {
+      entities[key] = '[Não Informado]'
+    }
+  })
   return entities
 }
 
@@ -551,7 +249,7 @@ const GenerateSchema = z.object({
   lexmlData: z.any().optional(),
   cacheKey: z.string().optional(),
   fieldMetadata: z.any().optional(),
-  template: z.string().optional().default("classic"),
+  template: z.string().min(1, "Template é obrigatório").default("classic-professional"),
   // Configurações existentes
   advancedFieldsEnabled: z.boolean().optional().default(false),
   languageStyle: z.string().optional().default("balanced"),
@@ -735,6 +433,19 @@ const fetchLexMLReferences = async (prompt: string, title?: string, enhanced = f
   }
 }
 
+interface SectionToggles {
+  contratante?: boolean;
+  contratado?: boolean;
+  fiador?: boolean;
+  testemunhas?: boolean;
+  includePerformanceMetrics?: boolean;
+  includeForceClause?: boolean;
+  includeArbitrationClause?: boolean;
+  includeDataProtection?: boolean;
+  includeIntellectualProperty?: boolean;
+  includeNonCompete?: boolean;
+}
+
 // Função principal para gerar contrato profissional
 const generateProfessionalContract = async (
   userPrompt: string,
@@ -745,10 +456,12 @@ const generateProfessionalContract = async (
   temperature = 0.3,
   maxTokens = 3000,
   languagePrompt = "",
-  contractRefinements = {},
-  sectionToggles: any = {},
+  contractRefinements: SectionToggles = {},
+  sectionToggles: SectionToggles = {},
   includeLegalNumbers = true,
 ): Promise<ProfessionalContract> => {
+  const openAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
   // Construir refinamentos baseados nas seleções
   const refinementPrompts = []
 
@@ -1152,7 +865,7 @@ const generateClassicTemplate = (
   const percentualFinal = "50%"
   const chavePix = contratadoEmail
   const prazoEntrega = "30 (trinta) dias"
-  const cidade = allFields.cidade || "São Paulo"
+  const cidade = allFields.contratante_cidade || "São Paulo"
 
   return `
 <!DOCTYPE html>
@@ -1369,12 +1082,16 @@ const generateClassicTemplate = (
 
 // Função principal para lidar com a rota
 export const POST = async (req: NextRequest) => {
+  console.log("🚀 [API /generate-contract] Iniciando geração de contrato.");
+
   try {
     const body = await req.json()
+    console.log("📦 [API /generate-contract] Body recebido:", JSON.stringify(body, null, 2));
+    
     const parsed = GenerateSchema.safeParse(body)
 
     if (!parsed.success) {
-      console.error("Erro de validação:", parsed.error)
+      console.error("[API /generate-contract] Erro de validação:", parsed.error)
       return NextResponse.json(
         { error: "Dados de entrada inválidos: " + parsed.error.issues[0]?.message },
         { status: 400 },
@@ -1382,10 +1099,10 @@ export const POST = async (req: NextRequest) => {
     }
 
     const {
-      prompt,
+      title,
+      prompt: userPrompt,
       contractType,
       fields,
-      title,
       temperature,
       maxTokens,
       customPrompt,
@@ -1404,19 +1121,30 @@ export const POST = async (req: NextRequest) => {
 
     // Validações básicas
     if (!title || title.trim().length === 0) {
+      console.error("[API /generate-contract] Título é obrigatório.")
       return NextResponse.json({ error: "Título é obrigatório" }, { status: 400 })
     }
 
-    if (!prompt || prompt.trim().length === 0) {
+    if (!userPrompt || userPrompt.trim().length === 0) {
+      console.error("[API /generate-contract] Descrição é obrigatória.")
       return NextResponse.json({ error: "Descrição é obrigatória" }, { status: 400 })
+    }
+    if (!template || template.trim().length === 0) {
+      console.error("[API /generate-contract] Template é obrigatório.")
+      return NextResponse.json({ error: "Template é obrigatório" }, { status: 400 })
     }
 
     try {
+      // Extração ultra-agressiva dos dados das partes ANTES de enviar para a IA
+      const extractedFieldsPrompt = extractCompleteEntities(title + '\n' + userPrompt);
       const flattenedFields = flattenFieldMetadata(fieldMetadata, sectionToggles)
-      const lexmlReferences = await fetchLexMLReferences(prompt, title, enhancedLexML)
+      const lexmlReferences = await fetchLexMLReferences(userPrompt, title, enhancedLexML)
 
+      console.log("🧠 [API /generate-contract] Chamando generateProfessionalContract...");
+      const partesPrompt = `CONTRATANTE: ${extractedFieldsPrompt.contratante_nome || '[Não Informado]'}, CNPJ: ${extractedFieldsPrompt.contratante_cnpj || '[Não Informado]'}, Endereço: ${extractedFieldsPrompt.contratante_endereco || '[Não Informado]'}; CONTRATADA: ${extractedFieldsPrompt.contratado_nome || '[Não Informado]'}, CPF: ${extractedFieldsPrompt.contratado_cpf || '[Não Informado]'}, Endereço: ${extractedFieldsPrompt.contratado_endereco || '[Não Informado]'};`;
+      const userPromptForIA = `${partesPrompt}\n${userPrompt}`;
       const contract = await generateProfessionalContract(
-        prompt,
+        userPromptForIA,
         title,
         contractType,
         customPrompt,
@@ -1429,9 +1157,16 @@ export const POST = async (req: NextRequest) => {
         includeLegalNumbers,
       )
 
-      let contractContent = ""
-      if (template === "classic") {
-        contractContent = generateClassicTemplate(
+      console.log("✅ [API /generate-contract] Contrato profissional gerado:", JSON.stringify(contract, null, 2));
+
+      if (!contract || Object.keys(contract).length === 0) {
+        console.error("❌ [API /generate-contract] Erro: generateProfessionalContract retornou um objeto vazio ou nulo.");
+        throw new Error("A IA não conseguiu estruturar o contrato. Tente refinar seu prompt.");
+      }
+      
+      let finalContractContent = ""
+      if (template === "classic" || template === "classic-professional") {
+        finalContractContent = generateClassicTemplate(
           title,
           contract,
           flattenedFields,
@@ -1442,7 +1177,7 @@ export const POST = async (req: NextRequest) => {
         )
       } else {
         // Fallback para outros templates
-        contractContent = generateClassicTemplate(
+        finalContractContent = generateClassicTemplate(
           title,
           contract,
           flattenedFields,
@@ -1453,31 +1188,77 @@ export const POST = async (req: NextRequest) => {
         )
       }
 
+      // Extração dupla: do prompt do usuário e do contrato gerado
+      const extractedFieldsContract = extractCompleteEntities(finalContractContent)
+      // Extração global em todo o texto do contrato gerado (frases longas)
+      const globalRegexFields = {
+        contratante_nome: /empresa\s+([A-Za-zÀ-ú0-9 .,&'-]{3,100})\s+(?:LTDA|Ltda|S\.A\.|EIRELI|ME|EPP|Tecnologia|Servi[cç]os|Digital|Ag[êe]ncia|[A-Za-zÀ-ú0-9 .,&'-]{3,100})?/i,
+        contratante_cnpj: /CNPJ[\s:ºnº]*([0-9.\-\/]{11,20})/i,
+        contratante_endereco: /(?:sede|localizada|situada|endereço)[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,100})/i,
+        contratado_nome: /empregado\s+([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i,
+        contratado_cpf: /CPF[\s:ºnº]*([0-9.\-\/]{11,20})/i,
+        contratado_endereco: /residente[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,100})/i,
+      }
+      const globalExtracted: Record<string, string> = {}
+      Object.entries(globalRegexFields).forEach(([key, regex]) => {
+        const match = finalContractContent.match(regex)
+        if (match && match[1]) {
+          globalExtracted[key] = match[1].trim()
+          console.log(`🟢 [GLOBAL] Extraído ${key}:`, globalExtracted[key])
+        }
+      })
+      // Merge inteligente: prioriza dados do contrato gerado, depois extração global, depois do prompt, depois do form
+      const mergedFields = { ...flattenedFields, ...extractedFieldsPrompt, ...extractedFieldsContract, ...globalExtracted }
+      console.log("🔍 [API /generate-contract] Campos finais para o template (merge+global):", JSON.stringify(mergedFields, null, 2));
+      // Gerar novamente o contrato, agora com os campos finais
+      let contractContentFinal = ""
+      if (template === "classic" || template === "classic-professional") {
+        contractContentFinal = generateClassicTemplate(
+          title,
+          contract,
+          mergedFields,
+          lexmlReferences.references,
+          undefined,
+          advancedFieldsEnabled,
+          sectionToggles,
+        )
+      } else {
+        contractContentFinal = generateClassicTemplate(
+          title,
+          contract,
+          mergedFields,
+          lexmlReferences.references,
+          undefined,
+          advancedFieldsEnabled,
+          sectionToggles,
+        )
+      }
+
       // Verificar se o conteúdo foi gerado
-      if (!contractContent || contractContent.trim().length === 0) {
+      if (!contractContentFinal || contractContentFinal.trim().length === 0) {
         return NextResponse.json({ error: "Falha ao gerar o conteúdo do contrato" }, { status: 500 })
       }
 
-      // Retornar o conteúdo do contrato
-      return NextResponse.json({ content: contractContent, success: true }, { status: 200 })
-    } catch (contractError) {
-      console.error("Erro na geração do contrato:", contractError)
-      return NextResponse.json(
-        {
-          error:
-            "Erro interno na geração do contrato: " +
-            (contractError instanceof Error ? contractError.message : "Erro desconhecido"),
-        },
-        { status: 500 },
-      )
+      const responsePayload = {
+        content: contractContentFinal,
+        contract,
+        allFields: mergedFields,
+        lexmlReferences,
+        cacheKey: cacheKey,
+        template, // <-- garantir que o template está presente no payload
+      }
+      
+      console.log("📤 [API /generate-contract] Enviando resposta para o cliente.");
+      return NextResponse.json(responsePayload)
+
+    } catch (error) {
+      console.error("❌ [API /generate-contract] ERRO CRÍTICO NA API:", error);
+      const errorMessage = error instanceof Error ? error.message : "Ocorreu um erro desconhecido."
+      return NextResponse.json({ error: "Falha na geração do contrato", details: errorMessage }, { status: 500 })
     }
   } catch (error) {
-    console.error("Erro geral na API:", error)
-    return NextResponse.json(
-      {
-        error: "Erro interno do servidor: " + (error instanceof Error ? error.message : "Erro desconhecido"),
-      },
-      { status: 500 },
-    )
+    console.error("❌ [API /generate-contract] ERRO CRÍTICO NA API:", error);
+    const errorMessage = error instanceof Error ? error.message : "Ocorreu um erro desconhecido."
+    return NextResponse.json({ error: "Falha na geração do contrato", details: errorMessage }, { status: 500 })
   }
 }

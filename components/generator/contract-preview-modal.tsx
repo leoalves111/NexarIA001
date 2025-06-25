@@ -24,7 +24,7 @@ import {
 import { useSubscription } from "@/hooks/use-subscription"
 
 interface ContractPreviewModalProps {
-  content: string
+  content: any
   title: string
   isOpen: boolean
   onClose: () => void
@@ -34,7 +34,6 @@ interface ContractPreviewModalProps {
   contractType: "simple" | "advanced"
   cacheHit: boolean
   lexmlData?: any
-  isDemo: boolean
 }
 
 export default function ContractPreviewModal({
@@ -48,7 +47,6 @@ export default function ContractPreviewModal({
   contractType,
   cacheHit,
   lexmlData,
-  isDemo,
 }: ContractPreviewModalProps) {
   const [exporting, setExporting] = useState<"pdf" | "word" | null>(null)
   const [editingTitle, setEditingTitle] = useState(false)
@@ -81,37 +79,8 @@ export default function ContractPreviewModal({
     setEditingTitle(false)
   }
 
-  // Clean content for display (remove AI-generated titles and disclaimers)
-  const cleanContent = content
-    .replace(/^#\s*CONTRATO\s+(SIMPLES|AVANÇADO|DE\s+\w+)/gim, "") // Remove AI titles
-    .replace(/\*\*Aviso Legal:.*?\*\*/gis, "") // Remove legal disclaimers
-    .replace(/Documento gerado por.*?profissional\./gis, "") // Remove AI disclaimers
-    .replace(/Gerado em:.*?Contrato\s+(Simples|Avançado)/gis, "") // Remove generation info
-    .replace(/Para salvar como PDF:.*/gis, "") // Remove PDF instructions
-    .trim()
-
-  // Limpar e extrair apenas o corpo do HTML para preview
-  const extractBodyContent = (htmlContent: string): string => {
-    // Extrair apenas o conteúdo dentro do <body>
-    const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
-    if (bodyMatch) {
-      return bodyMatch[1]
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "") // Remove scripts
-        .replace(/position:\s*fixed[^;]*;[^}]*}/gi, "") // Remove marca d'água do preview
-        .trim()
-    }
-
-    // Se não encontrar body, retorna o conteúdo limpo
-    return htmlContent
-      .replace(/<\/?html[^>]*>/gi, "")
-      .replace(/<\/?head[^>]*>/gi, "")
-      .replace(/<\/?body[^>]*>/gi, "")
-      .replace(/<title[^>]*>[\s\S]*?<\/title>/gi, "")
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-      .replace(/position:\s*fixed[^;]*;[^}]*}/gi, "")
-      .trim()
-  }
+  // O conteúdo agora é um objeto, então precisamos de uma string para o preview.
+  const displayContent = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -159,12 +128,6 @@ export default function ContractPreviewModal({
                     <Badge variant="outline" className="text-green-600 border-green-200">
                       <Scale className="h-3 w-3 mr-1" />
                       LexML
-                    </Badge>
-                  )}
-                  {isDemo && (
-                    <Badge variant="outline" className="text-orange-600 border-orange-200">
-                      <AlertTriangle className="h-3 w-3 mr-1" />
-                      Demo
                     </Badge>
                   )}
                   {isFreePlan && (
@@ -224,13 +187,14 @@ export default function ContractPreviewModal({
               <div
                 className="contract-content"
                 style={{
-                  fontFamily: "Times New Roman, serif",
-                  fontSize: "12pt",
+                  fontFamily: "monospace",
+                  fontSize: "10pt",
                   lineHeight: "1.4",
                   color: "#000",
+                  whiteSpace: "pre-wrap",
                 }}
                 dangerouslySetInnerHTML={{
-                  __html: extractBodyContent(content),
+                  __html: displayContent,
                 }}
               />
             </div>

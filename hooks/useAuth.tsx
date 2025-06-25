@@ -42,7 +42,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Test connectivity with a simple query
         try {
-          await supabase.from("profiles").select("id").limit(1)
+          const { data, error } = await supabase.from("profiles").select("id").limit(1)
+          if (error) throw error
           setConnectionStatus("connected")
         } catch (error) {
           console.error("Database connection error:", error)
@@ -148,7 +149,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const { data, error } = await supabase.from("profiles").insert(profileData).select().single()
 
-      return error ? null : data
+      if (error) throw error
+      return data
     } catch (error) {
       console.error("Error creating profile:", error)
       return null
@@ -168,7 +170,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const { data, error } = await supabase.from("subscriptions").insert(subscriptionData).select().single()
 
-      return error ? null : data
+      if (error) throw error
+      return data
     } catch (error) {
       console.error("Error creating subscription:", error)
       return null
@@ -182,7 +185,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         password,
       })
 
-      return { error }
+      if (error) throw error
+      return { error: null }
     } catch (err: any) {
       console.error("Auth error:", err)
       return { error: err }
@@ -202,8 +206,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       })
 
-      return { error }
-    } catch (err) {
+      if (error) throw error
+      return { error: null }
+    } catch (err: any) {
       console.error("SignUp error:", err)
       return { error: err }
     }
@@ -211,46 +216,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      await supabase.auth.signOut()
-      setProfile(null)
-      setSubscription(null)
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
     } catch (err) {
       console.error("SignOut error:", err)
     }
   }
 
   const updateProfile = async (updates: Partial<Profile>) => {
-    if (!user) {
-      return { error: { message: "Usuário não autenticado" } }
-    }
-
     try {
-      const updateData = {
-        ...updates,
-        updated_at: new Date().toISOString(),
-      }
+      if (!user?.id) throw new Error("No user")
 
-      const { data, error } = await supabase.from("profiles").update(updateData).eq("id", user.id).select().single()
+      const { error } = await supabase
+        .from("profiles")
+        .update(updates)
+        .eq("id", user.id)
 
-      if (error) {
-        return { error }
-      }
-
-      setProfile(data)
+      if (error) throw error
+      await refreshProfile()
       return { error: null }
-    } catch (err) {
-      console.error("Update profile error:", err)
-      return { error: { message: "Erro de rede - tente novamente" } }
+    } catch (err: any) {
+      console.error("Profile update error:", err)
+      return { error: err }
     }
   }
 
   const refreshProfile = async () => {
-    if (!session?.user) return
-
-    try {
-      await fetchUserData(session.user.id)
-    } catch (err) {
-      console.error("Refresh profile error:", err)
+    if (user?.id) {
+      await fetchUserData(user.id)
     }
   }
 
@@ -259,7 +252,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     session,
     profile,
     subscription,
-    loading: loading || sessionLoading,
+    loading,
     connectionStatus,
     signIn,
     signUp,

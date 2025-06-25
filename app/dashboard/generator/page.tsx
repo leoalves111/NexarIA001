@@ -10,6 +10,7 @@ import AdvancedSettings from "@/components/generator/advanced-settings"
 import ContractPreviewModal from "@/components/generator/contract-preview-modal"
 import ContractTemplateSelector from "@/components/generator/contract-template-selector"
 import { supabase } from "@/lib/supabase"
+
 // Replace the existing generateCacheKey function with this browser-compatible version
 const generateCacheKey = (title: string, description: string, contractType: string, advancedConfig: any) => {
   const content = `${title}-${description}-${contractType}-${JSON.stringify(advancedConfig)}`
@@ -29,7 +30,10 @@ export default function GeneratorPage() {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [generating, setGenerating] = useState(false)
-  const [generatedContent, setGeneratedContent] = useState("")
+  
+  // Alterado para armazenar o objeto completo do contrato
+  const [generatedContractData, setGeneratedContractData] = useState<any>(null)
+  
   const [showPreview, setShowPreview] = useState(false)
 
   // Configurações avançadas
@@ -43,9 +47,9 @@ export default function GeneratorPage() {
   const [lexmlData, setLexmlData] = useState<any>(null)
   const [cacheHit, setCacheHit] = useState(false)
 
-  const [selectedTemplate, setSelectedTemplate] = useState("classic")
+  const [selectedTemplate, setSelectedTemplate] = useState("classic-professional")
 
-  const { user, subscription, refreshProfile, isDemo } = useAuth()
+  const { user, subscription, refreshProfile } = useAuth()
   const { toast } = useToast()
 
   // Verificar créditos
@@ -53,7 +57,7 @@ export default function GeneratorPage() {
   const canGenerateAdvanced = subscription && subscription.creditos_avancados > 0
 
   const generateContract = async () => {
-    if (!user && !isDemo) {
+    if (!user) {
       toast({
         title: "Acesso negado",
         description: "Você precisa estar logado para gerar contratos.",
@@ -71,25 +75,32 @@ export default function GeneratorPage() {
       return
     }
 
-    // Verificar créditos apenas se não for demo
-    if (!isDemo) {
-      if (contractType === "simple" && !canGenerateSimple) {
-        toast({
-          title: "Créditos insuficientes",
-          description: "Você não possui créditos suficientes para gerar contratos simples.",
-          variant: "destructive",
-        })
-        return
-      }
+    if (!selectedTemplate || selectedTemplate.trim().length === 0) {
+      toast({
+        title: "Template não selecionado",
+        description: "Selecione um template antes de gerar o contrato.",
+        variant: "destructive",
+      })
+      return
+    }
 
-      if (contractType === "advanced" && !canGenerateAdvanced) {
-        toast({
-          title: "Créditos insuficientes",
-          description: "Você não possui créditos suficientes para gerar contratos avançados.",
-          variant: "destructive",
-        })
-        return
-      }
+    // Verificar créditos
+    if (contractType === "simple" && !canGenerateSimple) {
+      toast({
+        title: "Créditos insuficientes",
+        description: "Você não possui créditos suficientes para gerar contratos simples.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (contractType === "advanced" && !canGenerateAdvanced) {
+      toast({
+        title: "Créditos insuficientes",
+        description: "Você não possui créditos suficientes para gerar contratos avançados.",
+        variant: "destructive",
+      })
+      return
     }
 
     setGenerating(true)
@@ -119,7 +130,7 @@ ${description}`,
       if (cacheResponse.ok) {
         const cacheData = await cacheResponse.json()
         if (cacheData.found) {
-          setGeneratedContent(cacheData.content)
+          setGeneratedContractData(cacheData.content)
           setCacheHit(true)
           setShowPreview(true)
           toast({
@@ -197,18 +208,31 @@ ${description}`,
         result = JSON.parse(responseText)
       } catch (parseError) {
         console.error("Erro ao processar resposta da API:", parseError)
-        throw new Error("Erro na comunicação com o servidor. Tente novamente.")
+        toast({
+          title: "Erro ao gerar contrato",
+          description: parseError instanceof Error ? parseError.message : "Erro na comunicação com o servidor.",
+          variant: "destructive",
+        })
+        setGenerating(false)
+        return
       }
 
-      if (!result.content) {
-        throw new Error("Conteúdo do contrato não foi gerado")
+      if (!result.contract) {
+        toast({
+          title: "Erro ao gerar contrato",
+          description: result.error || "Conteúdo do contrato não foi gerado.",
+          variant: "destructive",
+        })
+        setGenerating(false)
+        return
       }
 
-      setGeneratedContent(result.content)
+      // Armazenar o objeto de dados completo
+      setGeneratedContractData(result)
       setShowPreview(true)
 
-      // 5. Atualizar créditos se não for demo
-      if (!isDemo && user && subscription) {
+      // 5. Atualizar créditos
+      if (user && subscription) {
         try {
           const newCredits =
             contractType === "simple"
@@ -242,50 +266,66 @@ ${description}`,
   }
 
   const handleExport = async (format: "pdf" | "word") => {
+    if (!generatedContractData) {
+        toast({
+            title: "Nenhum contrato gerado",
+            description: "Por favor, gere um contrato antes de exportar.",
+            variant: "destructive",
+        })
+        return
+    }
+    if (!generatedContractData.template || generatedContractData.template.trim().length === 0) {
+        toast({
+            title: "Template não encontrado no contrato gerado",
+            description: "Não foi possível identificar o template do contrato para exportação.",
+            variant: "destructive",
+        })
+        return
+    }
     try {
       const response = await fetch("/api/export-contract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title,
-          content: generatedContent,
           format,
-          contractType,
-          isDemo,
+          contractData: generatedContractData, // Enviar o objeto de dados completo
         }),
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Falha na exportação")
+        let errorMsg = "Falha ao preparar a exportação"
+        try {
+          const errorData = await response.json()
+          errorMsg = errorData.error || errorMsg
+        } catch {}
+        throw new Error(errorMsg)
       }
 
-      // Criar blob e fazer download direto
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.style.display = "none"
-      a.href = url
-
-      const filename = title.replace(/[^a-zA-Z0-9\s\-_]/g, "").replace(/\s+/g, "_")
-      a.download = `${filename}.${format === "pdf" ? "html" : "doc"}`
-
-      document.body.appendChild(a)
-      a.click()
-
-      // Cleanup
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-
-      toast({
-        title: `Contrato exportado em ${format.toUpperCase()}!`,
-        description: "O download foi iniciado automaticamente.",
-      })
+      if (format === "pdf") {
+        const { html } = await response.json();
+        const pdfWindow = window.open("");
+        pdfWindow?.document.write(html);
+        pdfWindow?.document.close();
+        setTimeout(() => {
+          pdfWindow?.print();
+        }, 500);
+      } else if (format === "word") {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        const safeTitle = (generatedContractData.contract?.titulo_contrato || "contrato").replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        a.href = url
+        a.download = `${safeTitle}.doc`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        window.URL.revokeObjectURL(url)
+      }
     } catch (error) {
       console.error("Erro na exportação:", error)
       toast({
-        title: "Erro na exportação",
-        description: error instanceof Error ? error.message : "Não foi possível exportar o contrato.",
+        title: "Erro ao exportar",
+        description: error instanceof Error ? error.message : "Não foi possível exportar o arquivo.",
         variant: "destructive",
       })
     }
@@ -296,6 +336,14 @@ ${description}`,
     toast({
       title: "Título atualizado!",
       description: "O título do contrato foi atualizado com sucesso.",
+    })
+  }
+
+  const handleEditDescription = () => {
+    // Implementar lógica para permitir edição se necessário
+    toast({
+      title: "Função em desenvolvimento",
+      description: "A edição do contrato gerado estará disponível em breve.",
     })
   }
 
@@ -335,7 +383,7 @@ ${description}`,
           onGenerate={generateContract}
           generating={generating}
           contractType={contractType}
-          disabled={!canGenerateSimple && !canGenerateAdvanced && !isDemo}
+          disabled={!canGenerateSimple && !canGenerateAdvanced}
           userPlan={subscription?.plano || "Demo"}
         />
 
@@ -356,20 +404,16 @@ ${description}`,
         {/* Modal de Preview */}
         {showPreview && (
           <ContractPreviewModal
-            content={generatedContent}
+            content={generatedContractData}
             title={title}
             isOpen={showPreview}
             onClose={() => setShowPreview(false)}
             onExport={handleExport}
-            onEditInput={() => {
-              setShowPreview(false)
-              setGeneratedContent("")
-            }}
+            onEditInput={handleEditDescription}
             onTitleSave={handleTitleSave}
             contractType={contractType}
             cacheHit={cacheHit}
             lexmlData={lexmlData}
-            isDemo={isDemo}
           />
         )}
       </div>

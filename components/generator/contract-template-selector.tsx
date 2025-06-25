@@ -11,7 +11,7 @@ interface ContractTemplateSelectorProps {
 
 const templates = [
   {
-    id: "classic",
+    id: "classic-professional",
     name: "Clássico Profissional",
     description: "Design tradicional com tipografia Times New Roman e layout formal",
     preview: "Formato jurídico tradicional com cláusulas numeradas e estrutura clássica",
@@ -19,7 +19,7 @@ const templates = [
     features: ["Tipografia Times New Roman", "Layout tradicional", "Cores sóbrias", "Formato jurídico padrão"],
   },
   {
-    id: "modern",
+    id: "modern-executive",
     name: "Moderno Executivo",
     description: "Design contemporâneo com gradientes e tipografia moderna",
     preview: "Layout moderno com cards, sombras e hierarquia visual clara",
@@ -27,7 +27,7 @@ const templates = [
     features: ["Tipografia Inter", "Gradientes elegantes", "Cards com sombras", "Design responsivo"],
   },
   {
-    id: "minimal",
+    id: "minimalist-clean",
     name: "Minimalista Clean",
     description: "Design limpo e minimalista com foco na legibilidade",
     preview: "Estrutura simples, espaçamento generoso e tipografia clara",
@@ -35,7 +35,7 @@ const templates = [
     features: ["Design minimalista", "Espaçamento otimizado", "Tipografia clara", "Foco na legibilidade"],
   },
   {
-    id: "corporate",
+    id: "corporate-premium",
     name: "Corporativo Premium",
     description: "Design empresarial sofisticado com elementos visuais refinados",
     preview: "Layout corporativo com bordas elegantes e estrutura hierárquica",
@@ -43,7 +43,7 @@ const templates = [
     features: ["Design corporativo", "Bordas elegantes", "Estrutura hierárquica", "Visual sofisticado"],
   },
   {
-    id: "creative",
+    id: "creative-icons",
     name: "Criativo com Ícones",
     description: "Design moderno com ícones e emojis para melhor organização visual",
     preview: "Layout criativo com ícones, cores vibrantes e elementos visuais",
