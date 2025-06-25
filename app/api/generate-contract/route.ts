@@ -1,6 +1,5 @@
-import { type NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { OpenAI } from "openai"
+import { type NextRequest, NextResponse } from "next/server"
 
 /**
  * FUNÇÃO ULTRA-INTELIGENTE para formatar e-mails
@@ -105,122 +104,120 @@ const formatPhone = (text: string): string => {
  */
 const extractCompleteEntities = (text: string): Record<string, any> => {
   const entities: Record<string, any> = {}
-  const cleanText = text.replace(/\s+/g, ' ').trim()
-  console.log('🔍 Texto para análise:', cleanText)
+  const cleanText = text.replace(/\s+/g, " ").trim()
+  console.log("🔍 Texto para análise:", cleanText)
 
-  // Lista de campos esperados e padrões
-  const fields = [
-    // Contratante
-    { key: 'contratante_nome', patterns: [/contratante[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i] },
-    { key: 'contratante_razao_social', patterns: [/raz[aã]o social[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i] },
-    { key: 'contratante_nome_fantasia', patterns: [/nome fantasia[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i] },
-    { key: 'contratante_cnpj', patterns: [/CNPJ[\s:ºnº]*([0-9.\-\/]{11,20})/i] },
-    { key: 'contratante_inscricao_estadual', patterns: [/inscri[cç][aã]o estadual[\s:]*([A-Za-z0-9.\-\/]{3,30})/i] },
-    { key: 'contratante_endereco', patterns: [/endere[cç]o[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,100})/i] },
-    { key: 'contratante_bairro', patterns: [/bairro[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,50})/i] },
-    { key: 'contratante_cep', patterns: [/CEP[\s:]*([0-9\-]{8,10})/i] },
-    { key: 'contratante_cidade', patterns: [/cidade[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,50})/i] },
-    { key: 'contratante_estado', patterns: [/estado[\s:]*([A-Za-zÀ-ú]{2,30})/i, /UF[\s:]*([A-Za-z]{2})/i] },
-    { key: 'contratante_pais', patterns: [/pa[ií]s[\s:]*([A-Za-zÀ-ú ]{3,30})/i] },
-    { key: 'contratante_email', patterns: [/e[- ]?mail[\s:]*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/gi] },
-    { key: 'contratante_telefone', patterns: [/telefone[\s:]*([0-9 ()-]{8,20})/gi, /celular[\s:]*([0-9 ()-]{8,20})/gi] },
-    // Contratado
-    { key: 'contratado_nome', patterns: [/contratada[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i, /prestador[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i] },
-    { key: 'contratado_cpf', patterns: [/CPF[\s:]*([0-9.\-\/]{11,20})/i] },
-    { key: 'contratado_rg', patterns: [/RG[\s:]*([A-Za-z0-9.-]{5,20})/i] },
-    { key: 'contratado_endereco', patterns: [/endere[cç]o[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,100})/i] },
-    { key: 'contratado_bairro', patterns: [/bairro[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,50})/i] },
-    { key: 'contratado_cep', patterns: [/CEP[\s:]*([0-9\-]{8,10})/i] },
-    { key: 'contratado_cidade', patterns: [/cidade[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,50})/i] },
-    { key: 'contratado_estado', patterns: [/estado[\s:]*([A-Za-zÀ-ú]{2,30})/i, /UF[\s:]*([A-Za-z]{2})/i] },
-    { key: 'contratado_pais', patterns: [/pa[ií]s[\s:]*([A-Za-zÀ-ú ]{3,30})/i] },
-    { key: 'contratado_email', patterns: [/e[- ]?mail[\s:]*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/gi] },
-    { key: 'contratado_telefone', patterns: [/telefone[\s:]*([0-9 ()-]{8,20})/gi, /celular[\s:]*([0-9 ()-]{8,20})/gi] },
-    { key: 'contratado_nacionalidade', patterns: [/nacionalidade[\s:]*([A-Za-zÀ-ú ]{3,30})/i] },
-    { key: 'contratado_profissao', patterns: [/profiss[aã]o[\s:]*([A-Za-zÀ-ú ]{3,30})/i] },
-    { key: 'contratado_data_nascimento', patterns: [/nascimento[\s:]*([0-9/\-]{8,12})/i] },
-    // Sócios
-    { key: 'socios', patterns: [/s[óo]cio[s]?:? ([A-Za-zÀ-ú0-9 .,&'-]{3,100}(?:, [A-Za-zÀ-ú0-9 .,&'-]{3,100})*)/i] },
-  ]
+  // Padrões mais específicos e inteligentes
+  const patterns = {
+    // Contratante (empresa/pessoa que contrata)
+    contratante_nome: [
+      /(?:contratante|empresa|cliente)[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100}(?:\s+(?:LTDA|Ltda|S\.A\.|EIRELI|ME|EPP|Tecnologia|Serviços|Digital|Agência))?)/i,
+      /([A-Z][a-zA-Z\s]+(?:LTDA|Ltda|S\.A\.|EIRELI|ME|EPP|Tecnologia|Serviços|Digital|Agência|Consultoria))/g,
+      /empresa[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i,
+      /para[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100}(?:\s+(?:LTDA|Ltda|S\.A\.|EIRELI|ME|EPP))?)/i,
+    ],
+    contratante_cnpj: [/CNPJ[\s:ºnº]*([0-9.\-/]{11,20})/gi, /([0-9]{2}\.?[0-9]{3}\.?[0-9]{3}\/[0-9]{4}-?[0-9]{2})/gi],
+    contratante_endereco: [
+      /endereço[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,150})/i,
+      /(?:rua|av|avenida|alameda)[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,150})/i,
+      /localizada[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,150})/i,
+    ],
+    contratante_email: [
+      /e[- ]?mail[\s:]*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/gi,
+      /contato[\s:]*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/gi,
+    ],
+    contratante_telefone: [
+      /telefone[\s:]*([0-9 ()\-+]{8,20})/gi,
+      /celular[\s:]*([0-9 ()\-+]{8,20})/gi,
+      /($$[0-9]{2}$$\s?[0-9]{4,5}-?[0-9]{4})/gi,
+    ],
 
-  // Extração principal
-  fields.forEach(({ key, patterns }) => {
+    // Contratado (prestador/pessoa física)
+    contratado_nome: [
+      /(?:contratada|prestador|freelancer|profissional)[\s:]*([A-Za-zÀ-ú ]{3,100})/i,
+      /([A-Z][a-z]+ [A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g,
+      /realizado[\s:]*(?:por|pela)[\s:]*([A-Za-zÀ-ú ]{3,100})/i,
+      /executado[\s:]*(?:por|pela)[\s:]*([A-Za-zÀ-ú ]{3,100})/i,
+    ],
+    contratado_cpf: [/CPF[\s:ºnº]*([0-9.\-/]{11,20})/gi, /([0-9]{3}\.?[0-9]{3}\.?[0-9]{3}-?[0-9]{2})/gi],
+    contratado_endereco: [
+      /(?:residente|domiciliado|endereço)[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,150})/i,
+      /(?:mora|reside)[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,150})/i,
+    ],
+    contratado_email: [
+      /(?:prestador|contratada).*?([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/gi,
+      /([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/gi,
+    ],
+    contratado_telefone: [
+      /(?:prestador|contratada).*?([0-9 ()\-+]{8,20})/gi,
+      /($$[0-9]{2}$$\s?[0-9]{4,5}-?[0-9]{4})/gi,
+    ],
+  }
+
+  // Extração com múltiplos padrões
+  Object.entries(patterns).forEach(([key, patternList]) => {
     let found = false
-    for (const pattern of patterns) {
-      let match
-      if (pattern.flags && pattern.flags.includes('g')) {
-        // múltiplos (e-mails, telefones, sócios)
-        const results = []
-        while ((match = pattern.exec(cleanText)) !== null) {
-          if (match[1]) results.push(match[1].trim())
+    for (const pattern of patternList) {
+      if (pattern.flags && pattern.flags.includes("g")) {
+        // Para padrões globais, pegar todas as ocorrências
+        const allMatches = []
+        let match
+        const globalPattern = new RegExp(pattern.source, pattern.flags)
+        while ((match = globalPattern.exec(cleanText)) !== null) {
+          if (match[1] && match[1].trim()) {
+            // Filtros específicos para melhorar a qualidade
+            const value = match[1].trim()
+
+            // Para nomes de empresas, verificar se tem indicadores corporativos
+            if (
+              key === "contratante_nome" &&
+              (value.includes("LTDA") ||
+                value.includes("S.A.") ||
+                value.includes("Tecnologia") ||
+                value.includes("Serviços"))
+            ) {
+              allMatches.push(value)
+            }
+            // Para nomes de pessoas, verificar se não tem indicadores corporativos
+            else if (
+              key === "contratado_nome" &&
+              !value.includes("LTDA") &&
+              !value.includes("S.A.") &&
+              value.split(" ").length >= 2 &&
+              value.split(" ").length <= 4
+            ) {
+              allMatches.push(value)
+            }
+            // Para outros campos, adicionar normalmente
+            else if (!key.includes("nome")) {
+              allMatches.push(value)
+            }
+          }
         }
-        if (results.length > 0) {
-          entities[key] = results
+        if (allMatches.length > 0) {
+          entities[key] = allMatches.length === 1 ? allMatches[0] : allMatches
           found = true
-          console.log(`🟢 Extraído ${key}:`, results)
+          console.log(`🟢 Extraído ${key}:`, entities[key])
           break
         }
       } else {
-        match = cleanText.match(pattern)
-        if (match && match[1]) {
-          entities[key] = match[1].trim()
+        // Para padrões únicos
+        const matches = cleanText.match(pattern)
+        if (matches && matches[1] && matches[1].trim()) {
+          entities[key] = matches[1].trim()
           found = true
           console.log(`🟢 Extraído ${key}:`, entities[key])
           break
         }
       }
     }
+
     if (!found) {
-      entities[key] = '[Não Informado]'
-      console.log(`🔴 Não encontrado ${key}`)
+      entities[key] = "[Não Informado]"
     }
   })
 
-  // Fallback: busca por linhas para campos principais
-  const lines = text.split(/\n|\r/)
-  lines.forEach((line) => {
-    fields.forEach(({ key }) => {
-      if ((!entities[key] || entities[key] === '[Não Informado]') && /[A-Za-zÀ-ú]/.test(line)) {
-        if (key.includes('contratante') && /contratante/i.test(line)) {
-          entities[key] = line.replace(/.*contratante[\s:ºnº]*/i, '').trim() || '[Não Informado]'
-        }
-        if (key.includes('contratado') && /contratada|prestador/i.test(line)) {
-          entities[key] = line.replace(/.*(contratada|prestador)[\s:ºnº]*/i, '').trim() || '[Não Informado]'
-        }
-        if (key.includes('cnpj') && /CNPJ/i.test(line)) {
-          entities[key] = line.replace(/.*CNPJ[\s:ºnº]*/i, '').trim() || '[Não Informado]'
-        }
-        if (key.includes('cpf') && /CPF/i.test(line)) {
-          entities[key] = line.replace(/.*CPF[\s:ºnº]*/i, '').trim() || '[Não Informado]'
-        }
-        if (key.includes('rg') && /RG/i.test(line)) {
-          entities[key] = line.replace(/.*RG[\s:ºnº]*/i, '').trim() || '[Não Informado]'
-        }
-        if (key.includes('endereco') && /endere[cç]o/i.test(line)) {
-          entities[key] = line.replace(/.*endere[cç]o[\s:ºnº]*/i, '').trim() || '[Não Informado]'
-        }
-        if (key.includes('bairro') && /bairro/i.test(line)) {
-          entities[key] = line.replace(/.*bairro[\s:ºnº]*/i, '').trim() || '[Não Informado]'
-        }
-        if (key.includes('cep') && /CEP/i.test(line)) {
-          entities[key] = line.replace(/.*CEP[\s:ºnº]*/i, '').trim() || '[Não Informado]'
-        }
-        if (key.includes('cidade') && /cidade/i.test(line)) {
-          entities[key] = line.replace(/.*cidade[\s:ºnº]*/i, '').trim() || '[Não Informado]'
-        }
-        if (key.includes('estado') && (/estado/i.test(line) || /UF/i.test(line))) {
-          entities[key] = line.replace(/.*(estado|UF)[\s:ºnº]*/i, '').trim() || '[Não Informado]'
-        }
-      }
-    })
-  })
-
-  // Garantir todos os campos esperados
-  fields.forEach(({ key }) => {
-    if (!entities[key] || (Array.isArray(entities[key]) && entities[key].length === 0)) {
-      entities[key] = '[Não Informado]'
-    }
-  })
+  console.log("🎯 Entidades finais extraídas:", entities)
   return entities
 }
 
@@ -434,16 +431,16 @@ const fetchLexMLReferences = async (prompt: string, title?: string, enhanced = f
 }
 
 interface SectionToggles {
-  contratante?: boolean;
-  contratado?: boolean;
-  fiador?: boolean;
-  testemunhas?: boolean;
-  includePerformanceMetrics?: boolean;
-  includeForceClause?: boolean;
-  includeArbitrationClause?: boolean;
-  includeDataProtection?: boolean;
-  includeIntellectualProperty?: boolean;
-  includeNonCompete?: boolean;
+  contratante?: boolean
+  contratado?: boolean
+  fiador?: boolean
+  testemunhas?: boolean
+  includePerformanceMetrics?: boolean
+  includeForceClause?: boolean
+  includeArbitrationClause?: boolean
+  includeDataProtection?: boolean
+  includeIntellectualProperty?: boolean
+  includeNonCompete?: boolean
 }
 
 // Função principal para gerar contrato profissional
@@ -460,8 +457,6 @@ const generateProfessionalContract = async (
   sectionToggles: SectionToggles = {},
   includeLegalNumbers = true,
 ): Promise<ProfessionalContract> => {
-  const openAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-
   // Construir refinamentos baseados nas seleções
   const refinementPrompts = []
 
@@ -790,7 +785,7 @@ const generateIntelligentFallback = (
     condicoes_pagamento: {
       valor_base: "Valor conforme proposta comercial anexa ao presente contrato.",
       forma_pagamento: "Pagamento via PIX, transferência bancária ou boleto bancário.",
-      prazos: "Pagamentos conforme cronograma estabelecido na proposta comercial.",
+      prazos: "Pagamentos conforme cronograma específico do projeto.",
       multas_atraso: "Multa de 2% sobre valor em atraso, acrescida de juros de 1% ao mês.",
     },
     prazo_execucao: {
@@ -824,7 +819,10 @@ const generateIntelligentFallback = (
   }
 }
 
-// Substituir a função generateClassicTemplate completamente por esta versão que segue o modelo exato:
+// Remover a função processHtmlTemplate e generateClassicTemplate que usam fs/require
+// Substituir por uma versão que funciona no Next.js
+
+// Substituir a função generateClassicTemplate completamente por esta versão corrigida:
 
 const generateClassicTemplate = (
   title: string,
@@ -841,18 +839,399 @@ const generateClassicTemplate = (
     year: "numeric",
   })
 
-  // Extrair dados automaticamente dos campos ou usar valores padrão
-  const contratanteNome = allFields.contratante_nome || "EMPRESA CONTRATANTE LTDA"
-  const contratanteCnpj = allFields.contratante_cnpj || "00.000.000/0001-00"
-  const contratanteEndereco = allFields.contratante_endereco || "Rua Exemplo, 123, Centro, São Paulo/SP"
-  const contratanteTelefone = allFields.contratante_telefone || "(11) 9999-9999"
-  const contratanteEmail = allFields.contratante_email || "contato@empresa.com.br"
+  // EXTRAÇÃO INTELIGENTE DIRETA DO PROMPT/TÍTULO
+  const fullText = `${title} ${JSON.stringify(contract)} ${JSON.stringify(allFields)}`
+  console.log("🔍 Texto completo para extração:", fullText)
 
-  const contratadoNome = allFields.contratado_nome || "PRESTADOR DE SERVIÇOS"
-  const contratadoCpf = allFields.contratado_cpf || "000.000.000-00"
-  const contratadoEndereco = allFields.contratado_endereco || "Rua do Prestador, 456, Bairro, São Paulo/SP"
-  const contratadoTelefone = allFields.contratado_telefone || "(11) 8888-8888"
-  const contratadoEmail = allFields.contratado_email || "prestador@email.com"
+  // Buscar nomes de empresas (CONTRATADA - quem presta o serviço)
+  const empresaPatterns = [
+    /([A-Z][a-zA-Z\s]+(?:LTDA|Ltda|S\.A\.|EIRELI|ME|EPP|Tecnologia|Serviços|Digital|Agência|Consultoria))/g,
+    /empresa[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i,
+    /prestador[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100}(?:\s+(?:LTDA|Ltda|S\.A\.|EIRELI|ME|EPP))?)/i,
+  ]
+
+  let contratadaNome = "EMPRESA PRESTADORA LTDA"
+  for (const pattern of empresaPatterns) {
+    const match = fullText.match(pattern)
+    if (match && match[1] && match[1].length > 5) {
+      contratadaNome = match[1].trim()
+      console.log("🟢 Empresa (CONTRATADA) encontrada:", contratadaNome)
+      break
+    }
+  }
+
+  // Buscar nomes de pessoas físicas (CONTRATANTE - quem contrata)
+  const pessoaPatterns = [
+    /([A-Z][a-z]+ [A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g,
+    /contratante[\s:]*([A-Za-zÀ-ú ]{3,100})/i,
+    /cliente[\s:]*([A-Za-zÀ-ú ]{3,100})/i,
+  ]
+
+  let contratanteNome = "PESSOA CONTRATANTE"
+  for (const pattern of pessoaPatterns) {
+    const matches = fullText.match(pattern)
+    if (matches) {
+      for (const match of matches) {
+        // Verificar se é um nome de pessoa (não empresa)
+        if (
+          match &&
+          match.length > 5 &&
+          !match.includes("LTDA") &&
+          !match.includes("S.A.") &&
+          match.split(" ").length >= 2 &&
+          match.split(" ").length <= 4
+        ) {
+          contratanteNome = match.trim()
+          console.log("🟢 Pessoa (CONTRATANTE) encontrada:", contratanteNome)
+          break
+        }
+      }
+      if (contratanteNome !== "PESSOA CONTRATANTE") break
+    }
+  }
+
+  // Buscar CNPJ (para CONTRATADA)
+  const cnpjMatch = fullText.match(/([0-9]{2}\.?[0-9]{3}\.?[0-9]{3}\/[0-9]{4}-?[0-9]{2})/g)
+  const contratadaCnpj = cnpjMatch ? cnpjMatch[0] : "00.000.000/0001-00"
+
+  // Buscar CPF (para CONTRATANTE)
+  const cpfMatch = fullText.match(/([0-9]{3}\.?[0-9]{3}\.?[0-9]{3}-?[0-9]{2})/g)
+  const contratanteCpf = cpfMatch ? cpfMatch[0] : "000.000.000-00"
+
+  // Buscar endereços
+  const enderecoPatterns = [
+    /(?:rua|av|avenida|alameda)[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,150})/i,
+    /endereço[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,150})/i,
+  ]
+
+  let endereco = "Rua Exemplo, 123, Centro, São Paulo/SP"
+  for (const pattern of enderecoPatterns) {
+    const match = fullText.match(pattern)
+    if (match && match[1] && match[1].length > 10) {
+      endereco = match[1].trim()
+      break
+    }
+  }
+
+  // Usar dados dos campos se disponíveis, senão usar dados extraídos
+  const finalContratadaNome = allFields.contratada_nome || allFields.contratado_nome || contratadaNome
+  const finalContratadaCnpj = allFields.contratada_cnpj || allFields.contratado_cnpj || contratadaCnpj
+  const finalContratadaEndereco = allFields.contratada_endereco || allFields.contratado_endereco || endereco
+
+  const finalContratanteNome = allFields.contratante_nome || contratanteNome
+  const finalContratanteCpf = allFields.contratante_cpf || contratanteCpf
+  const finalContratanteEndereco = allFields.contratante_endereco || endereco
+
+  return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${contract.titulo_contrato}</title>
+    <style>
+        @page {
+            margin: 2.5cm;
+            size: A4;
+        }
+        
+        body {
+            font-family: 'Times New Roman', serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            color: #000;
+            margin: 0;
+            padding: 0;
+            background: white;
+        }
+        
+        .contract-container {
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+        }
+        
+        .contract-header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 20px;
+        }
+        
+        .contract-title {
+            font-size: 18pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+        
+        .parties-intro {
+            margin: 30px 0;
+            text-align: justify;
+            font-size: 11pt;
+            line-height: 1.5;
+        }
+        
+        .party-info {
+            font-weight: bold;
+            margin: 5px 0;
+        }
+        
+        .clause-title {
+            font-size: 12pt;
+            font-weight: bold;
+            margin: 25px 0 15px 0;
+            text-transform: uppercase;
+        }
+        
+        .clause-content {
+            margin-bottom: 20px;
+            text-align: justify;
+            font-size: 11pt;
+            line-height: 1.5;
+        }
+        
+        .clause-item {
+            margin: 10px 0 10px 20px;
+        }
+        
+        .signatures {
+            margin-top: 60px;
+            text-align: center;
+        }
+        
+        .signature-block {
+            display: inline-block;
+            width: 45%;
+            margin: 20px 2.5%;
+            text-align: center;
+        }
+        
+        .signature-line {
+            border-top: 1px solid #000;
+            margin: 50px 0 10px 0;
+            padding-top: 10px;
+            font-size: 10pt;
+            font-weight: bold;
+        }
+        
+        @media print {
+            body { margin: 0; padding: 0; }
+            .contract-container { 
+                max-width: none;
+                margin: 0;
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="contract-container">
+        <div class="contract-header">
+            <h1 class="contract-title">${contract.titulo_contrato}</h1>
+        </div>
+        
+        <div class="parties-intro">
+            <p><strong>CONTRATADA:</strong> ${finalContratadaNome}, inscrita no CNPJ nº ${finalContratadaCnpj}, com sede em ${finalContratadaEndereco}, doravante denominada CONTRATADA.</p>
+            
+            <p><strong>CONTRATANTE:</strong> ${finalContratanteNome}, inscrito(a) no CPF nº ${finalContratanteCpf}, residente e domiciliado(a) em ${finalContratanteEndereco}, doravante denominado(a) CONTRATANTE.</p>
+            
+            <p>As partes acima identificadas têm, entre si, justo e acordado o presente Contrato de Prestação de Serviços, que se regerá pelas cláusulas e condições seguintes:</p>
+        </div>
+
+        <div class="clause-title">CLÁUSULA 1ª - OBJETO DO CONTRATO</div>
+        <div class="clause-content">
+            ${contract.objeto_detalhado}
+        </div>
+
+        <div class="clause-title">CLÁUSULA 2ª - OBRIGAÇÕES</div>
+        <div class="clause-content">
+            <strong>2.1. Obrigações da CONTRATADA:</strong>
+            ${contract.obrigacoes_contratado.map((obrigacao) => `<div class="clause-item">• ${obrigacao}</div>`).join("")}
+            
+            <br><strong>2.2. Obrigações do CONTRATANTE:</strong>
+            ${contract.obrigacoes_contratante.map((obrigacao) => `<div class="clause-item">• ${obrigacao}</div>`).join("")}
+        </div>
+
+        <div class="clause-title">CLÁUSULA 3ª - CONDIÇÕES DE PAGAMENTO</div>
+        <div class="clause-content">
+            <strong>Valor:</strong> ${contract.condicoes_pagamento.valor_base}<br>
+            <strong>Forma de Pagamento:</strong> ${contract.condicoes_pagamento.forma_pagamento}<br>
+            <strong>Prazos:</strong> ${contract.condicoes_pagamento.prazos}<br>
+            <strong>Multas por Atraso:</strong> ${contract.condicoes_pagamento.multas_atraso}
+        </div>
+
+        <div class="clause-title">CLÁUSULA 4ª - PRAZO DE EXECUÇÃO</div>
+        <div class="clause-content">
+            <strong>Início:</strong> ${contract.prazo_execucao.inicio}<br>
+            <strong>Duração:</strong> ${contract.prazo_execucao.duracao}<br>
+            <strong>Entrega:</strong> ${contract.prazo_execucao.entrega}
+        </div>
+
+        ${contract.clausulas_especiais
+          .map(
+            (clausula, index) => `
+        <div class="clause-title">CLÁUSULA ${index + 5}ª - ${clausula.titulo}</div>
+        <div class="clause-content">
+            ${clausula.conteudo}
+        </div>
+        `,
+          )
+          .join("")}
+
+        <div class="clause-title">CLÁUSULA ${contract.clausulas_especiais.length + 5}ª - RESCISÃO</div>
+        <div class="clause-content">
+            <strong>Condições:</strong> ${contract.rescisao.condicoes}<br>
+            <strong>Penalidades:</strong> ${contract.rescisao.penalidades}<br>
+            <strong>Devoluções:</strong> ${contract.rescisao.devolucoes}
+        </div>
+
+        <div class="clause-title">CLÁUSULA ${contract.clausulas_especiais.length + 6}ª - DISPOSIÇÕES LEGAIS</div>
+        <div class="clause-content">
+            <strong>Lei Aplicável:</strong> ${contract.disposicoes_legais.lei_aplicavel}<br>
+            <strong>Foro Competente:</strong> ${contract.disposicoes_legais.foro_competente}<br>
+            <strong>Alterações:</strong> ${contract.disposicoes_legais.alteracoes}
+        </div>
+
+        <div class="signatures">
+            <p><strong>São Paulo, ${currentDate}</strong></p>
+            
+            <div class="signature-block">
+                <div class="signature-line">
+                    ${finalContratadaNome}<br>
+                    CONTRATADA
+                </div>
+            </div>
+            
+            <div class="signature-block">
+                <div class="signature-line">
+                    ${finalContratanteNome}<br>
+                    CONTRATANTE
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>`
+}
+
+// Remover as funções processHtmlTemplate e generateInlineTemplate que não são mais necessárias
+
+// Renomear a função anterior para fallback
+const generateInlineTemplate = (
+  title: string,
+  contract: ProfessionalContract,
+  allFields: Record<string, any>,
+  lexmlReferences: any[],
+  subscription?: any,
+  advancedFieldsEnabled = false,
+  sectionToggles: any = {},
+) => {
+  const currentDate = new Date().toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  })
+
+  // EXTRAÇÃO INTELIGENTE DIRETA DO PROMPT/TÍTULO
+  const fullText = `${title} ${JSON.stringify(contract)} ${JSON.stringify(allFields)}`
+  console.log("🔍 Texto completo para extração:", fullText)
+
+  // Buscar nomes de empresas (CONTRATANTE)
+  const empresaPatterns = [
+    /([A-Z][a-zA-Z\s]+(?:LTDA|Ltda|S\.A\.|EIRELI|ME|EPP|Tecnologia|Serviços|Digital|Agência|Consultoria))/g,
+    /empresa[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i,
+    /contratante[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i,
+  ]
+
+  let contratanteNome = "EMPRESA CONTRATANTE LTDA"
+  for (const pattern of empresaPatterns) {
+    const match = fullText.match(pattern)
+    if (match && match[1] && match[1].length > 5) {
+      contratanteNome = match[1].trim()
+      console.log("🟢 Empresa encontrada:", contratanteNome)
+      break
+    }
+  }
+
+  // Buscar nomes de pessoas físicas (CONTRATADO)
+  const pessoaPatterns = [
+    /([A-Z][a-z]+ [A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g,
+    /contratada[\s:]*([A-Za-zÀ-ú ]{3,100})/i,
+    /prestador[\s:]*([A-Za-zÀ-ú ]{3,100})/i,
+  ]
+
+  let contratadoNome = "PRESTADOR DE SERVIÇOS"
+  for (const pattern of pessoaPatterns) {
+    const matches = fullText.match(pattern)
+    if (matches) {
+      for (const match of matches) {
+        // Verificar se é um nome de pessoa (não empresa)
+        if (
+          match &&
+          match.length > 5 &&
+          !match.includes("LTDA") &&
+          !match.includes("S.A.") &&
+          match.split(" ").length >= 2 &&
+          match.split(" ").length <= 4
+        ) {
+          contratadoNome = match.trim()
+          console.log("🟢 Pessoa encontrada:", contratadoNome)
+          break
+        }
+      }
+      if (contratadoNome !== "PRESTADOR DE SERVIÇOS") break
+    }
+  }
+
+  // Buscar CNPJ
+  const cnpjMatch = fullText.match(/([0-9]{2}\.?[0-9]{3}\.?[0-9]{3}\/[0-9]{4}-?[0-9]{2})/g)
+  const contratanteCnpj = cnpjMatch ? cnpjMatch[0] : "00.000.000/0001-00"
+
+  // Buscar CPF
+  const cpfMatch = fullText.match(/([0-9]{3}\.?[0-9]{3}\.?[0-9]{3}-?[0-9]{2})/g)
+  const contratadoCpf = cpfMatch ? cpfMatch[0] : "000.000.000-00"
+
+  // Buscar endereços
+  const enderecoPatterns = [
+    /(?:rua|av|avenida|alameda)[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,150})/i,
+    /endereço[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,150})/i,
+  ]
+
+  let endereco = "Rua Exemplo, 123, Centro, São Paulo/SP"
+  for (const pattern of enderecoPatterns) {
+    const match = fullText.match(pattern)
+    if (match && match[1] && match[1].length > 10) {
+      endereco = match[1].trim()
+      break
+    }
+  }
+
+  // Buscar emails
+  const emailMatch = fullText.match(/([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g)
+  const contratanteEmail = emailMatch ? emailMatch[0] : "contato@empresa.com.br"
+  const contratadoEmail =
+    emailMatch && emailMatch[1] ? emailMatch[1] : emailMatch ? emailMatch[0] : "prestador@email.com"
+
+  // Buscar telefones
+  const telefoneMatch = fullText.match(/($$[0-9]{2}$$\s?[0-9]{4,5}-?[0-9]{4})/g)
+  const contratanteTelefone = telefoneMatch ? telefoneMatch[0] : "(11) 9999-9999"
+  const contratadoTelefone = telefoneMatch && telefoneMatch[1] ? telefoneMatch[1] : "(11) 8888-8888"
+
+  // Usar dados dos campos se disponíveis, senão usar dados extraídos
+  const finalContratanteNome = allFields.contratante_nome || contratanteNome
+  const finalContratanteCnpj = allFields.contratante_cnpj || contratanteCnpj
+  const finalContratanteEndereco = allFields.contratante_endereco || endereco
+  const finalContratanteEmail = allFields.contratante_email || contratanteEmail
+  const finalContratanteTelefone = allFields.contratante_telefone || contratanteTelefone
+
+  const finalContratadoNome = allFields.contratado_nome || contratadoNome
+  const finalContratadoCpf = allFields.contratado_cpf || contratadoCpf
+  const finalContratadoEndereco = allFields.contratado_endereco || endereco
+  const finalContratadoEmail = allFields.contratado_email || contratadoEmail
+  const finalContratadoTelefone = allFields.contratado_telefone || telefoneMatch
 
   // Processar serviços das especificações técnicas
   const servicos = Array.isArray(contract.especificacoes_tecnicas) ? contract.especificacoes_tecnicas : []
@@ -863,231 +1242,231 @@ const generateClassicTemplate = (
   const valorTotal = "R$ 5.000,00"
   const percentualEntrada = "50%"
   const percentualFinal = "50%"
-  const chavePix = contratadoEmail
+  const chavePix = finalContratadoEmail
   const prazoEntrega = "30 (trinta) dias"
-  const cidade = allFields.contratante_cidade || "São Paulo"
+  const cidade = "São Paulo"
 
   return `
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Contrato de Prestação de Serviço</title>
-    <style>
-        @page {
-            margin: 2cm;
-            size: A4;
-        }
-        
-        body {
-            font-family: 'Times New Roman', serif;
-            font-size: 12pt;
-            line-height: 1.5;
-            color: #000;
-            margin: 0;
-            padding: 20px;
-            background: white;
-        }
-        
-        .contract-container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-        }
-        
-        .contract-title {
-            text-align: center;
-            font-size: 16pt;
-            font-weight: bold;
-            margin: 0 0 30px 0;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .parties-section {
-            display: table;
-            width: 100%;
-            margin: 20px 0;
-        }
-        
-        .party-column {
-            display: table-cell;
-            width: 50%;
-            vertical-align: top;
-            padding-right: 20px;
-        }
-        
-        .party-title {
-            font-weight: bold;
-            font-size: 12pt;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-        }
-        
-        .party-field {
-            margin-bottom: 8px;
-            font-size: 11pt;
-        }
-        
-        .section-title {
-            font-size: 12pt;
-            font-weight: bold;
-            margin: 25px 0 10px 0;
-            text-transform: uppercase;
-        }
-        
-        .section-content {
-            margin-bottom: 15px;
-            text-align: justify;
-            font-size: 11pt;
-            line-height: 1.4;
-        }
-        
-        .service-item {
-            margin: 10px 0;
-            padding-left: 20px;
-        }
-        
-        .signatures-section {
-            margin-top: 50px;
-            text-align: center;
-        }
-        
-        .signature-box {
-            display: inline-block;
-            width: 45%;
-            margin: 20px 2.5%;
-            text-align: center;
-        }
-        
-        .signature-line {
-            border-top: 1px solid #000;
-            margin: 40px 0 10px 0;
-            padding-top: 8px;
-            font-size: 11pt;
-        }
-        
-        @media print {
-            body { margin: 0; }
-            .contract-container { 
-                box-shadow: none; 
-                margin: 0;
-                padding: 20px;
-            }
-        }
-    </style>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>Contrato de Prestação de Serviço</title>
+   <style>
+       @page {
+           margin: 2cm;
+           size: A4;
+       }
+       
+       body {
+           font-family: 'Times New Roman', serif;
+           font-size: 12pt;
+           line-height: 1.5;
+           color: #000;
+           margin: 0;
+           padding: 20px;
+           background: white;
+       }
+       
+       .contract-container {
+           max-width: 800px;
+           margin: 0 auto;
+           background: white;
+           padding: 30px;
+       }
+       
+       .contract-title {
+           text-align: center;
+           font-size: 16pt;
+           font-weight: bold;
+           margin: 0 0 30px 0;
+           text-transform: uppercase;
+           letter-spacing: 1px;
+       }
+       
+       .parties-section {
+           display: table;
+           width: 100%;
+           margin: 20px 0;
+       }
+       
+       .party-column {
+           display: table-cell;
+           width: 50%;
+           vertical-align: top;
+           padding-right: 20px;
+       }
+       
+       .party-title {
+           font-weight: bold;
+           font-size: 12pt;
+           margin-bottom: 10px;
+           text-transform: uppercase;
+       }
+       
+       .party-field {
+           margin-bottom: 8px;
+           font-size: 11pt;
+       }
+       
+       .section-title {
+           font-size: 12pt;
+           font-weight: bold;
+           margin: 25px 0 10px 0;
+           text-transform: uppercase;
+       }
+       
+       .section-content {
+           margin-bottom: 15px;
+           text-align: justify;
+           font-size: 11pt;
+           line-height: 1.4;
+       }
+       
+       .service-item {
+           margin: 10px 0;
+           padding-left: 20px;
+       }
+       
+       .signatures-section {
+           margin-top: 50px;
+           text-align: center;
+       }
+       
+       .signature-box {
+           display: inline-block;
+           width: 45%;
+           margin: 20px 2.5%;
+           text-align: center;
+       }
+       
+       .signature-line {
+           border-top: 1px solid #000;
+           margin: 40px 0 10px 0;
+           padding-top: 8px;
+           font-size: 11pt;
+       }
+       
+       @media print {
+           body { margin: 0; }
+           .contract-container { 
+               box-shadow: none; 
+               margin: 0;
+               padding: 20px;
+           }
+       }
+   </style>
 </head>
 <body>
-    <div class="contract-container">
-        <h1 class="contract-title">CONTRATO DE PRESTAÇÃO DE SERVIÇO</h1>
-        
-        <div class="parties-section">
-            <div class="party-column">
-                <div class="party-title">CONTRATANTE:</div>
-                <div class="party-field"><strong>Nome:</strong> ${contratanteNome}</div>
-                <div class="party-field"><strong>E-mail:</strong> ${contratanteEmail}</div>
-                <div class="party-field"><strong>Endereço:</strong> ${contratanteEndereco}</div>
-                <div class="party-field"><strong>CPF/CNPJ:</strong> ${contratanteCnpj}</div>
-                <div class="party-field"><strong>Telefone:</strong> ${contratanteTelefone}</div>
-            </div>
-            
-            <div class="party-column">
-                <div class="party-title">CONTRATADO:</div>
-                <div class="party-field"><strong>Nome:</strong> ${contratadoNome}</div>
-                <div class="party-field"><strong>E-mail:</strong> ${contratadoEmail}</div>
-                <div class="party-field"><strong>Endereço:</strong> ${contratadoEndereco}</div>
-                <div class="party-field"><strong>CPF/CNPJ:</strong> ${contratadoCpf}</div>
-                <div class="party-field"><strong>Telefone:</strong> ${contratadoTelefone}</div>
-            </div>
-        </div>
+   <div class="contract-container">
+       <h1 class="contract-title">CONTRATO DE PRESTAÇÃO DE SERVIÇO</h1>
+       
+       <div class="parties-section">
+           <div class="party-column">
+               <div class="party-title">CONTRATANTE:</div>
+               <div class="party-field"><strong>Nome:</strong> ${finalContratanteNome}</div>
+               <div class="party-field"><strong>E-mail:</strong> ${finalContratanteEmail}</div>
+               <div class="party-field"><strong>Endereço:</strong> ${finalContratanteEndereco}</div>
+               <div class="party-field"><strong>CPF/CNPJ:</strong> ${finalContratanteCnpj}</div>
+               <div class="party-field"><strong>Telefone:</strong> ${finalContratanteTelefone}</div>
+           </div>
+           
+           <div class="party-column">
+               <div class="party-title">CONTRATADO:</div>
+               <div class="party-field"><strong>Nome:</strong> ${finalContratadoNome}</div>
+               <div class="party-field"><strong>E-mail:</strong> ${finalContratadoEmail}</div>
+               <div class="party-field"><strong>Endereço:</strong> ${finalContratadoEndereco}</div>
+               <div class="party-field"><strong>CPF/CNPJ:</strong> ${finalContratadoCpf}</div>
+               <div class="party-field"><strong>Telefone:</strong> ${finalContratadoTelefone}</div>
+           </div>
+       </div>
 
-        <div class="section-title">1. OBJETO DO CONTRATO:</div>
-        <div class="section-content">
-            O presente contrato tem como objeto a prestação dos seguintes serviços pela CONTRATADA à CONTRATANTE:
-            
-            <div class="service-item">1. <strong>${servico1}</strong></div>
-            <div class="service-item">2. ${contract.objeto_detalhado}</div>
-            
-            ${servicos.length > 1 ? `<div class="service-item">3. <strong>${servico2}</strong></div>` : ""}
-            ${servicos.length > 2 ? `<div class="service-item">4. ${servicos[2]}</div>` : ""}
-        </div>
+       <div class="section-title">1. OBJETO DO CONTRATO:</div>
+       <div class="section-content">
+           O presente contrato tem como objeto a prestação dos seguintes serviços pela CONTRATADA à CONTRATANTE:
+           
+           <div class="service-item">1. <strong>${servico1}</strong></div>
+           <div class="service-item">2. ${contract.objeto_detalhado}</div>
+           
+           ${servicos.length > 1 ? `<div class="service-item">3. <strong>${servico2}</strong></div>` : ""}
+           ${servicos.length > 2 ? `<div class="service-item">4. ${servicos[2]}</div>` : ""}
+       </div>
 
-        <div class="section-title">2. VALOR DO CONTRATO:</div>
-        <div class="section-content">
-            O valor total dos serviços será de <strong>${valorTotal}</strong>, a ser pago da seguinte forma:<br><br>
-            
-            <strong>${percentualEntrada}</strong> na assinatura deste contrato, como entrada.<br>
-            <strong>${percentualFinal}</strong> ao final da entrega dos serviços.<br><br>
-            
-            O pagamento poderá ser realizado via <strong>PIX, transferência bancária, boleto</strong>, utilizando os seguintes dados:<br><br>
-            
-            <strong>Chave PIX:</strong> ${chavePix}<br>
-            <strong>Banco:</strong> Conforme dados fornecidos pela CONTRATADA
-        </div>
+       <div class="section-title">2. VALOR DO CONTRATO:</div>
+       <div class="section-content">
+           O valor total dos serviços será de <strong>${valorTotal}</strong>, a ser pago da seguinte forma:<br><br>
+           
+           <strong>${percentualEntrada}</strong> na assinatura deste contrato, como entrada.<br>
+           <strong>${percentualFinal}</strong> ao final da entrega dos serviços.<br><br>
+           
+           O pagamento poderá ser realizado via <strong>PIX, transferência bancária, boleto</strong>, utilizando os seguintes dados:<br><br>
+           
+           <strong>Chave PIX:</strong> ${chavePix}<br>
+           <strong>Banco:</strong> Conforme dados fornecidos pela CONTRATADA
+       </div>
 
-        <div class="section-title">3. PRAZO DE ENTREGA:</div>
-        <div class="section-content">
-            O prazo final para a entrega dos serviços será até <strong>${prazoEntrega}</strong>, condicionado à prestação de todas as informações e materiais necessários por parte da CONTRATANTE.<br><br>
-            
-            Caso ocorra atraso na devolução de informações ou no fornecimento de materiais essenciais, o prazo de entrega poderá ser ajustado.
-        </div>
+       <div class="section-title">3. PRAZO DE ENTREGA:</div>
+       <div class="section-content">
+           O prazo final para a entrega dos serviços será até <strong>${prazoEntrega}</strong>, condicionado à prestação de todas as informações e materiais necessários por parte da CONTRATANTE.<br><br>
+           
+           Caso ocorra atraso na devolução de informações ou no fornecimento de materiais essenciais, o prazo de entrega poderá ser ajustado.
+       </div>
 
-        <div class="section-title">4. RESPONSABILIDADES DAS PARTES:</div>
-        <div class="section-content">
-            <strong>CONTRATANTE:</strong> Compromete-se a fornecer todas as informações e materiais necessários para a execução dos serviços no prazo acordado e a efetuar os pagamentos conforme estipulado neste contrato.<br><br>
-            
-            <strong>CONTRATADA:</strong> Compromete-se a prestar os serviços conforme descrito, dentro do prazo e com a qualidade técnica adequada, respeitando as especificações acordadas.
-        </div>
+       <div class="section-title">4. RESPONSABILIDADES DAS PARTES:</div>
+       <div class="section-content">
+           <strong>CONTRATANTE:</strong> Compromete-se a fornecer todas as informações e materiais necessários para a execução dos serviços no prazo acordado e a efetuar os pagamentos conforme estipulado neste contrato.<br><br>
+           
+           <strong>CONTRATADA:</strong> Compromete-se a prestar os serviços conforme descrito, dentro do prazo e com a qualidade técnica adequada, respeitando as especificações acordadas.
+       </div>
 
-        <div class="section-title">5. ALTERAÇÕES E ADITIVOS:</div>
-        <div class="section-content">
-            Qualquer modificação no escopo dos serviços ou no valor do contrato deverá ser formalizada através de um aditivo contratual assinado por ambas as partes.
-        </div>
+       <div class="section-title">5. ALTERAÇÕES E ADITIVOS:</div>
+       <div class="section-content">
+           Qualquer modificação no escopo dos serviços ou no valor do contrato deverá ser formalizada através de um aditivo contratual assinado por ambas as partes.
+       </div>
 
-        <div class="section-title">6. RESCISÃO:</div>
-        <div class="section-content">
-            O presente contrato poderá ser rescindido por qualquer uma das partes mediante notificação prévia por escrito de <strong>10 (dez) dias</strong>. Em caso de rescisão, os valores pagos pela CONTRATANTE serão devolvidos proporcionalmente aos serviços já realizados pela CONTRATADA.<br><br>
-            
-            Em caso de descumprimento das cláusulas deste contrato, a parte prejudicada poderá rescindir o contrato sem prejuízo de cobrar por eventuais danos e perdas.
-        </div>
+       <div class="section-title">6. RESCISÃO:</div>
+       <div class="section-content">
+           O presente contrato poderá ser rescindido por qualquer uma das partes mediante notificação prévia por escrito de <strong>10 (dez) dias</strong>. Em caso de rescisão, os valores pagos pela CONTRATANTE serão devolvidos proporcionalmente aos serviços já realizados pela CONTRATADA.<br><br>
+           
+           Em caso de descumprimento das cláusulas deste contrato, a parte prejudicada poderá rescindir o contrato sem prejuízo de cobrar por eventuais danos e perdas.
+       </div>
 
-        <div class="section-title">7. DISPOSIÇÕES GERAIS:</div>
-        <div class="section-content">
-            As partes concordam em agir de boa-fé durante toda a vigência deste contrato.
-        </div>
+       <div class="section-title">7. DISPOSIÇÕES GERAIS:</div>
+       <div class="section-content">
+           As partes concordam em agir de boa-fé durante toda a vigência deste contrato.
+       </div>
 
-        <div class="signatures-section">
-            <p><strong>${cidade}</strong>, <strong>${currentDate}</strong></p>
-            
-            <div class="signature-box">
-                <div class="signature-line">
-                    <strong>${contratanteNome}</strong><br>
-                    CONTRATANTE
-                </div>
-            </div>
-            
-            <div class="signature-box">
-                <div class="signature-line">
-                    <strong>${contratadoNome}</strong><br>
-                    CONTRATADO
-                </div>
-            </div>
-        </div>
-    </div>
+       <div class="signatures-section">
+           <p><strong>${cidade}</strong>, <strong>${currentDate}</strong></p>
+           
+           <div class="signature-box">
+               <div class="signature-line">
+                   <strong>${finalContratanteNome}</strong><br>
+                   CONTRATANTE
+               </div>
+           </div>
+           
+           <div class="signature-box">
+               <div class="signature-line">
+                   <strong>${finalContratadoNome}</strong><br>
+                   CONTRATADO
+               </div>
+           </div>
+       </div>
+   </div>
 </body>
 </html>`
 }
 
 // Função principal para lidar com a rota
 export const POST = async (req: NextRequest) => {
-  console.log("🚀 [API /generate-contract] Iniciando geração de contrato.");
+  console.log("🚀 [API /generate-contract] Iniciando geração de contrato.")
 
   try {
     const body = await req.json()
-    console.log("📦 [API /generate-contract] Body recebido:", JSON.stringify(body, null, 2));
-    
+    console.log("📦 [API /generate-contract] Body recebido:", JSON.stringify(body, null, 2))
+
     const parsed = GenerateSchema.safeParse(body)
 
     if (!parsed.success) {
@@ -1136,13 +1515,13 @@ export const POST = async (req: NextRequest) => {
 
     try {
       // Extração ultra-agressiva dos dados das partes ANTES de enviar para a IA
-      const extractedFieldsPrompt = extractCompleteEntities(title + '\n' + userPrompt);
+      const extractedFieldsPrompt = extractCompleteEntities(title + "\n" + userPrompt)
       const flattenedFields = flattenFieldMetadata(fieldMetadata, sectionToggles)
       const lexmlReferences = await fetchLexMLReferences(userPrompt, title, enhancedLexML)
 
-      console.log("🧠 [API /generate-contract] Chamando generateProfessionalContract...");
-      const partesPrompt = `CONTRATANTE: ${extractedFieldsPrompt.contratante_nome || '[Não Informado]'}, CNPJ: ${extractedFieldsPrompt.contratante_cnpj || '[Não Informado]'}, Endereço: ${extractedFieldsPrompt.contratante_endereco || '[Não Informado]'}; CONTRATADA: ${extractedFieldsPrompt.contratado_nome || '[Não Informado]'}, CPF: ${extractedFieldsPrompt.contratado_cpf || '[Não Informado]'}, Endereço: ${extractedFieldsPrompt.contratado_endereco || '[Não Informado]'};`;
-      const userPromptForIA = `${partesPrompt}\n${userPrompt}`;
+      console.log("🧠 [API /generate-contract] Chamando generateProfessionalContract...")
+      const partesPrompt = `CONTRATANTE: ${extractedFieldsPrompt.contratante_nome || "[Não Informado]"}, CNPJ: ${extractedFieldsPrompt.contratante_cnpj || "[Não Informado]"}, Endereço: ${extractedFieldsPrompt.contratante_endereco || "[Não Informado]"}; CONTRATADA: ${extractedFieldsPrompt.contratado_nome || "[Não Informado]"}, CPF: ${extractedFieldsPrompt.contratado_cpf || "[Não Informado]"}, Endereço: ${extractedFieldsPrompt.contratado_endereco || "[Não Informado]"};`
+      const userPromptForIA = `${partesPrompt}\n${userPrompt}`
       const contract = await generateProfessionalContract(
         userPromptForIA,
         title,
@@ -1157,60 +1536,23 @@ export const POST = async (req: NextRequest) => {
         includeLegalNumbers,
       )
 
-      console.log("✅ [API /generate-contract] Contrato profissional gerado:", JSON.stringify(contract, null, 2));
+      console.log("✅ [API /generate-contract] Contrato profissional gerado:", JSON.stringify(contract, null, 2))
 
       if (!contract || Object.keys(contract).length === 0) {
-        console.error("❌ [API /generate-contract] Erro: generateProfessionalContract retornou um objeto vazio ou nulo.");
-        throw new Error("A IA não conseguiu estruturar o contrato. Tente refinar seu prompt.");
-      }
-      
-      let finalContractContent = ""
-      if (template === "classic" || template === "classic-professional") {
-        finalContractContent = generateClassicTemplate(
-          title,
-          contract,
-          flattenedFields,
-          lexmlReferences.references,
-          undefined,
-          advancedFieldsEnabled,
-          sectionToggles,
+        console.error(
+          "❌ [API /generate-contract] Erro: generateProfessionalContract retornou um objeto vazio ou nulo.",
         )
-      } else {
-        // Fallback para outros templates
-        finalContractContent = generateClassicTemplate(
-          title,
-          contract,
-          flattenedFields,
-          lexmlReferences.references,
-          undefined,
-          advancedFieldsEnabled,
-          sectionToggles,
-        )
+        throw new Error("A IA não conseguiu estruturar o contrato. Tente refinar seu prompt.")
       }
 
-      // Extração dupla: do prompt do usuário e do contrato gerado
-      const extractedFieldsContract = extractCompleteEntities(finalContractContent)
-      // Extração global em todo o texto do contrato gerado (frases longas)
-      const globalRegexFields = {
-        contratante_nome: /empresa\s+([A-Za-zÀ-ú0-9 .,&'-]{3,100})\s+(?:LTDA|Ltda|S\.A\.|EIRELI|ME|EPP|Tecnologia|Servi[cç]os|Digital|Ag[êe]ncia|[A-Za-zÀ-ú0-9 .,&'-]{3,100})?/i,
-        contratante_cnpj: /CNPJ[\s:ºnº]*([0-9.\-\/]{11,20})/i,
-        contratante_endereco: /(?:sede|localizada|situada|endereço)[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,100})/i,
-        contratado_nome: /empregado\s+([A-Za-zÀ-ú0-9 .,&'-]{3,100})/i,
-        contratado_cpf: /CPF[\s:ºnº]*([0-9.\-\/]{11,20})/i,
-        contratado_endereco: /residente[\s:]*([A-Za-zÀ-ú0-9 .,&'-]{10,100})/i,
-      }
-      const globalExtracted: Record<string, string> = {}
-      Object.entries(globalRegexFields).forEach(([key, regex]) => {
-        const match = finalContractContent.match(regex)
-        if (match && match[1]) {
-          globalExtracted[key] = match[1].trim()
-          console.log(`🟢 [GLOBAL] Extraído ${key}:`, globalExtracted[key])
-        }
-      })
       // Merge inteligente: prioriza dados do contrato gerado, depois extração global, depois do prompt, depois do form
-      const mergedFields = { ...flattenedFields, ...extractedFieldsPrompt, ...extractedFieldsContract, ...globalExtracted }
-      console.log("🔍 [API /generate-contract] Campos finais para o template (merge+global):", JSON.stringify(mergedFields, null, 2));
-      // Gerar novamente o contrato, agora com os campos finais
+      const mergedFields = {
+        ...flattenedFields,
+        ...extractedFieldsPrompt,
+      }
+      console.log("🔍 [API /generate-contract] Campos finais para o template:", JSON.stringify(mergedFields, null, 2))
+
+      // Gerar contrato com template
       let contractContentFinal = ""
       if (template === "classic" || template === "classic-professional") {
         contractContentFinal = generateClassicTemplate(
@@ -1247,17 +1589,16 @@ export const POST = async (req: NextRequest) => {
         cacheKey: cacheKey,
         template, // <-- garantir que o template está presente no payload
       }
-      
-      console.log("📤 [API /generate-contract] Enviando resposta para o cliente.");
-      return NextResponse.json(responsePayload)
 
+      console.log("📤 [API /generate-contract] Enviando resposta para o cliente.")
+      return NextResponse.json(responsePayload)
     } catch (error) {
-      console.error("❌ [API /generate-contract] ERRO CRÍTICO NA API:", error);
+      console.error("❌ [API /generate-contract] ERRO CRÍTICO NA API:", error)
       const errorMessage = error instanceof Error ? error.message : "Ocorreu um erro desconhecido."
       return NextResponse.json({ error: "Falha na geração do contrato", details: errorMessage }, { status: 500 })
     }
   } catch (error) {
-    console.error("❌ [API /generate-contract] ERRO CRÍTICO NA API:", error);
+    console.error("❌ [API /generate-contract] ERRO CRÍTICO NA API:", error)
     const errorMessage = error instanceof Error ? error.message : "Ocorreu um erro desconhecido."
     return NextResponse.json({ error: "Falha na geração do contrato", details: errorMessage }, { status: 500 })
   }
