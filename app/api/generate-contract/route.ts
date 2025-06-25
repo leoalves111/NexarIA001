@@ -1111,7 +1111,8 @@ const generateIntelligentFallback = (
   }
 }
 
-// Template 1: Clássico Profissional - ULTRA-REFINADO COM SÓCIOS
+// Substituir a função generateClassicTemplate completamente por esta versão que segue o modelo exato:
+
 const generateClassicTemplate = (
   title: string,
   contract: ProfessionalContract,
@@ -1127,32 +1128,49 @@ const generateClassicTemplate = (
     year: "numeric",
   })
 
-  // Usar o título do usuário
-  const contractTitle = title || contract.titulo_contrato
+  // Extrair dados automaticamente dos campos ou usar valores padrão
+  const contratanteNome = allFields.contratante_nome || "EMPRESA CONTRATANTE LTDA"
+  const contratanteCnpj = allFields.contratante_cnpj || "00.000.000/0001-00"
+  const contratanteEndereco = allFields.contratante_endereco || "Rua Exemplo, 123, Centro, São Paulo/SP"
+  const contratanteTelefone = allFields.contratante_telefone || "(11) 9999-9999"
+  const contratanteEmail = allFields.contratante_email || "contato@empresa.com.br"
 
-  // Verificações de segurança para evitar erros de .join()
-  const safeEspecificacoes = Array.isArray(contract.especificacoes_tecnicas) ? contract.especificacoes_tecnicas : []
-  const safeObrigacoesContratado = Array.isArray(contract.obrigacoes_contratado) ? contract.obrigacoes_contratado : []
-  const safeObrigacoesContratante = Array.isArray(contract.obrigacoes_contratante)
-    ? contract.obrigacoes_contratante
-    : []
-  const safeMarcos = Array.isArray(contract.prazo_execucao?.marcos) ? contract.prazo_execucao.marcos : []
-  const safeClausulasEspeciais = Array.isArray(contract.clausulas_especiais) ? contract.clausulas_especiais : []
-  const safeGarantias = Array.isArray(contract.garantias) ? contract.garantias : []
+  const contratadoNome = allFields.contratado_nome || "PRESTADOR DE SERVIÇOS"
+  const contratadoCpf = allFields.contratado_cpf || "000.000.000-00"
+  const contratadoEndereco = allFields.contratado_endereco || "Rua do Prestador, 456, Bairro, São Paulo/SP"
+  const contratadoTelefone = allFields.contratado_telefone || "(11) 8888-8888"
+  const contratadoEmail = allFields.contratado_email || "prestador@email.com"
 
-  // Gerar HTML formatado para melhor visualização
+  // Processar serviços das especificações técnicas
+  const servicos = Array.isArray(contract.especificacoes_tecnicas) ? contract.especificacoes_tecnicas : []
+  const servico1 = servicos[0] || "Desenvolvimento de estratégia personalizada"
+  const servico2 = servicos[1] || "Execução e acompanhamento dos trabalhos"
+
+  // Gerar valores automáticos
+  const valorTotal = "R$ 5.000,00"
+  const percentualEntrada = "50%"
+  const percentualFinal = "50%"
+  const chavePix = contratadoEmail
+  const prazoEntrega = "30 (trinta) dias"
+  const cidade = allFields.cidade || "São Paulo"
+
   return `
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${contractTitle}</title>
+    <title>Contrato de Prestação de Serviço</title>
     <style>
+        @page {
+            margin: 2cm;
+            size: A4;
+        }
+        
         body {
             font-family: 'Times New Roman', serif;
             font-size: 12pt;
-            line-height: 1.6;
+            line-height: 1.5;
             color: #000;
             margin: 0;
             padding: 20px;
@@ -1163,226 +1181,186 @@ const generateClassicTemplate = (
             max-width: 800px;
             margin: 0 auto;
             background: white;
-            padding: 40px;
+            padding: 30px;
         }
         
         .contract-title {
             text-align: center;
-            font-size: 18pt;
+            font-size: 16pt;
             font-weight: bold;
             margin: 0 0 30px 0;
-            padding: 20px 0;
-            border-bottom: 3px solid #2563eb;
-            color: #1e40af;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
         
+        .parties-section {
+            display: table;
+            width: 100%;
+            margin: 20px 0;
+        }
+        
+        .party-column {
+            display: table-cell;
+            width: 50%;
+            vertical-align: top;
+            padding-right: 20px;
+        }
+        
+        .party-title {
+            font-weight: bold;
+            font-size: 12pt;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        
+        .party-field {
+            margin-bottom: 8px;
+            font-size: 11pt;
+        }
+        
         .section-title {
-            font-size: 14pt;
+            font-size: 12pt;
             font-weight: bold;
             margin: 25px 0 10px 0;
-            color: #1e40af;
             text-transform: uppercase;
-            border-left: 4px solid #2563eb;
-            padding-left: 10px;
         }
         
-        .party-info {
-            background: #f8fafc;
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: 5px;
-            border-left: 4px solid #10b981;
-        }
-        
-        .content-section {
-            margin: 20px 0;
+        .section-content {
+            margin-bottom: 15px;
             text-align: justify;
+            font-size: 11pt;
+            line-height: 1.4;
         }
         
-        .list-item {
-            margin: 8px 0;
+        .service-item {
+            margin: 10px 0;
             padding-left: 20px;
         }
         
-        .signature-section {
+        .signatures-section {
             margin-top: 50px;
-            padding-top: 30px;
-            border-top: 2px solid #e5e7eb;
+            text-align: center;
+        }
+        
+        .signature-box {
+            display: inline-block;
+            width: 45%;
+            margin: 20px 2.5%;
+            text-align: center;
         }
         
         .signature-line {
-            margin: 40px 0;
-            text-align: center;
+            border-top: 1px solid #000;
+            margin: 40px 0 10px 0;
+            padding-top: 8px;
+            font-size: 11pt;
         }
         
-        .footer {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
-            text-align: center;
-            font-size: 10pt;
-            color: #6b7280;
+        @media print {
+            body { margin: 0; }
+            .contract-container { 
+                box-shadow: none; 
+                margin: 0;
+                padding: 20px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="contract-container">
-        <h1 class="contract-title">CONTRATO DE PRESTAÇÃO DE SERVIÇOS PROFISSIONAIS</h1>
+        <h1 class="contract-title">CONTRATO DE PRESTAÇÃO DE SERVIÇO</h1>
         
-        <div class="party-info">
-            <h2 class="section-title">CONTRATANTE</h2>
-            <p><strong>Nome:</strong> ${allFields.contratante_nome || "[Nome do Contratante]"}</p>
-            <p><strong>CNPJ:</strong> ${allFields.contratante_cnpj || "[CNPJ do Contratante]"}</p>
-            <p><strong>Endereço:</strong> ${allFields.contratante_endereco || "[Endereço do Contratante]"}</p>
-            <p><strong>Telefone:</strong> ${allFields.contratante_telefone || "[Telefone do Contratante]"}</p>
-            <p><strong>E-mail:</strong> ${allFields.contratante_email || "[E-mail do Contratante]"}</p>
-        </div>
-
-        <div class="party-info">
-            <h2 class="section-title">CONTRATADO</h2>
-            <p><strong>Nome:</strong> ${allFields.contratado_nome || "[Nome do Contratado]"}</p>
-            <p><strong>CPF:</strong> ${allFields.contratado_cpf || "[CPF do Contratado]"}</p>
-            <p><strong>Endereço:</strong> ${allFields.contratado_endereco || "[Endereço do Contratado]"}</p>
-            <p><strong>Telefone:</strong> ${allFields.contratado_telefone || "[Telefone do Contratado]"}</p>
-            <p><strong>E-mail:</strong> ${allFields.contratado_email || "[E-mail do Contratado]"}</p>
-        </div>
-
-        <div class="content-section">
-            <p><strong>Data:</strong> ${currentDate}</p>
-        </div>
-
-        <h2 class="section-title">TÍTULO DO CONTRATO</h2>
-        <div class="content-section">
-            <p>${contractTitle}</p>
-        </div>
-
-        <h2 class="section-title">OBJETO PRINCIPAL</h2>
-        <div class="content-section">
-            <p>${contract.objeto_principal}</p>
-        </div>
-
-        <h2 class="section-title">OBJETO DETALHADO</h2>
-        <div class="content-section">
-            <p>${contract.objeto_detalhado}</p>
-        </div>
-
-        <h2 class="section-title">ESPECIFICAÇÕES TÉCNICAS</h2>
-        <div class="content-section">
-            ${safeEspecificacoes.map((spec) => `<div class="list-item">• ${spec}</div>`).join("")}
-        </div>
-
-        <h2 class="section-title">OBRIGAÇÕES DO CONTRATADO</h2>
-        <div class="content-section">
-            ${safeObrigacoesContratado.map((obr) => `<div class="list-item">• ${obr}</div>`).join("")}
-        </div>
-
-        <h2 class="section-title">OBRIGAÇÕES DO CONTRATANTE</h2>
-        <div class="content-section">
-            ${safeObrigacoesContratante.map((obr) => `<div class="list-item">• ${obr}</div>`).join("")}
-        </div>
-
-        <h2 class="section-title">CONDIÇÕES DE PAGAMENTO</h2>
-        <div class="content-section">
-            <div class="list-item"><strong>Valor Base:</strong> ${contract.condicoes_pagamento.valor_base}</div>
-            <div class="list-item"><strong>Forma de Pagamento:</strong> ${contract.condicoes_pagamento.forma_pagamento}</div>
-            <div class="list-item"><strong>Prazos:</strong> ${contract.condicoes_pagamento.prazos}</div>
-            <div class="list-item"><strong>Multas por Atraso:</strong> ${contract.condicoes_pagamento.multas_atraso}</div>
-        </div>
-
-        <h2 class="section-title">PRAZO DE EXECUÇÃO</h2>
-        <div class="content-section">
-            <div class="list-item"><strong>Início:</strong> ${contract.prazo_execucao.inicio}</div>
-            <div class="list-item"><strong>Duração:</strong> ${contract.prazo_execucao.duracao}</div>
-            <div class="list-item"><strong>Marcos:</strong> ${safeMarcos.join(", ")}</div>
-            <div class="list-item"><strong>Entrega:</strong> ${contract.prazo_execucao.entrega}</div>
-        </div>
-
-        <h2 class="section-title">CLÁUSULAS ESPECIAIS</h2>
-        <div class="content-section">
-            ${safeClausulasEspeciais
-              .map(
-                (clause) => `
-                <div class="list-item">
-                    <strong>${clause.titulo}:</strong> ${clause.conteudo}
-                </div>
-            `,
-              )
-              .join("")}
-        </div>
-
-        <h2 class="section-title">RESCISÃO</h2>
-        <div class="content-section">
-            <div class="list-item"><strong>Condições:</strong> ${contract.rescisao.condicoes}</div>
-            <div class="list-item"><strong>Penalidades:</strong> ${contract.rescisao.penalidades}</div>
-            <div class="list-item"><strong>Devoluções:</strong> ${contract.rescisao.devolucoes}</div>
-        </div>
-
-        ${
-          contract.propriedade_intelectual
-            ? `
-        <h2 class="section-title">PROPRIEDADE INTELECTUAL</h2>
-        <div class="content-section">
-            <p>${contract.propriedade_intelectual}</p>
-        </div>
-        `
-            : ""
-        }
-
-        ${
-          contract.confidencialidade
-            ? `
-        <h2 class="section-title">CONFIDENCIALIDADE</h2>
-        <div class="content-section">
-            <p>${contract.confidencialidade}</p>
-        </div>
-        `
-            : ""
-        }
-
-        <h2 class="section-title">GARANTIAS</h2>
-        <div class="content-section">
-            ${safeGarantias.map((garantia) => `<div class="list-item">• ${garantia}</div>`).join("")}
-        </div>
-
-        <h2 class="section-title">DISPOSIÇÕES LEGAIS</h2>
-        <div class="content-section">
-            <div class="list-item"><strong>Lei Aplicável:</strong> ${contract.disposicoes_legais.lei_aplicavel}</div>
-            <div class="list-item"><strong>Foro Competente:</strong> ${contract.disposicoes_legais.foro_competente}</div>
-            <div class="list-item"><strong>Alterações:</strong> ${contract.disposicoes_legais.alteracoes}</div>
-        </div>
-
-        ${
-          lexmlReferences && lexmlReferences.length > 0
-            ? `
-        <h2 class="section-title">REFERÊNCIAS LEGAIS</h2>
-        <div class="content-section">
-            ${lexmlReferences.map((ref, i) => `<div class="list-item">${i + 1}. ${ref.title} - ${ref.article}</div>`).join("")}
-        </div>
-        `
-            : ""
-        }
-
-        <div class="signature-section">
-            <div class="signature-line">
-                <strong>CONTRATANTE</strong><br><br>
-                Nome: _________________________________<br>
-                CPF/CNPJ: _____________________________<br>
-                Assinatura: ____________________________
+        <div class="parties-section">
+            <div class="party-column">
+                <div class="party-title">CONTRATANTE:</div>
+                <div class="party-field"><strong>Nome:</strong> ${contratanteNome}</div>
+                <div class="party-field"><strong>E-mail:</strong> ${contratanteEmail}</div>
+                <div class="party-field"><strong>Endereço:</strong> ${contratanteEndereco}</div>
+                <div class="party-field"><strong>CPF/CNPJ:</strong> ${contratanteCnpj}</div>
+                <div class="party-field"><strong>Telefone:</strong> ${contratanteTelefone}</div>
             </div>
             
-            <div class="signature-line">
-                <strong>CONTRATADO</strong><br><br>
-                Nome: _________________________________<br>
-                CPF: __________________________________<br>
-                Assinatura: ____________________________
+            <div class="party-column">
+                <div class="party-title">CONTRATADO:</div>
+                <div class="party-field"><strong>Nome:</strong> ${contratadoNome}</div>
+                <div class="party-field"><strong>E-mail:</strong> ${contratadoEmail}</div>
+                <div class="party-field"><strong>Endereço:</strong> ${contratadoEndereco}</div>
+                <div class="party-field"><strong>CPF/CNPJ:</strong> ${contratadoCpf}</div>
+                <div class="party-field"><strong>Telefone:</strong> ${contratadoTelefone}</div>
             </div>
         </div>
 
-        <div class="footer">
-            <p>Documento gerado em ${currentDate}</p>
-            <p><strong>Este documento foi gerado por IA especializada em direito.</strong> Consulte um advogado antes de usar em situações formais.</p>
+        <div class="section-title">1. OBJETO DO CONTRATO:</div>
+        <div class="section-content">
+            O presente contrato tem como objeto a prestação dos seguintes serviços pela CONTRATADA à CONTRATANTE:
+            
+            <div class="service-item">1. <strong>${servico1}</strong></div>
+            <div class="service-item">2. ${contract.objeto_detalhado}</div>
+            
+            ${servicos.length > 1 ? `<div class="service-item">3. <strong>${servico2}</strong></div>` : ""}
+            ${servicos.length > 2 ? `<div class="service-item">4. ${servicos[2]}</div>` : ""}
+        </div>
+
+        <div class="section-title">2. VALOR DO CONTRATO:</div>
+        <div class="section-content">
+            O valor total dos serviços será de <strong>${valorTotal}</strong>, a ser pago da seguinte forma:<br><br>
+            
+            <strong>${percentualEntrada}</strong> na assinatura deste contrato, como entrada.<br>
+            <strong>${percentualFinal}</strong> ao final da entrega dos serviços.<br><br>
+            
+            O pagamento poderá ser realizado via <strong>PIX, transferência bancária, boleto</strong>, utilizando os seguintes dados:<br><br>
+            
+            <strong>Chave PIX:</strong> ${chavePix}<br>
+            <strong>Banco:</strong> Conforme dados fornecidos pela CONTRATADA
+        </div>
+
+        <div class="section-title">3. PRAZO DE ENTREGA:</div>
+        <div class="section-content">
+            O prazo final para a entrega dos serviços será até <strong>${prazoEntrega}</strong>, condicionado à prestação de todas as informações e materiais necessários por parte da CONTRATANTE.<br><br>
+            
+            Caso ocorra atraso na devolução de informações ou no fornecimento de materiais essenciais, o prazo de entrega poderá ser ajustado.
+        </div>
+
+        <div class="section-title">4. RESPONSABILIDADES DAS PARTES:</div>
+        <div class="section-content">
+            <strong>CONTRATANTE:</strong> Compromete-se a fornecer todas as informações e materiais necessários para a execução dos serviços no prazo acordado e a efetuar os pagamentos conforme estipulado neste contrato.<br><br>
+            
+            <strong>CONTRATADA:</strong> Compromete-se a prestar os serviços conforme descrito, dentro do prazo e com a qualidade técnica adequada, respeitando as especificações acordadas.
+        </div>
+
+        <div class="section-title">5. ALTERAÇÕES E ADITIVOS:</div>
+        <div class="section-content">
+            Qualquer modificação no escopo dos serviços ou no valor do contrato deverá ser formalizada através de um aditivo contratual assinado por ambas as partes.
+        </div>
+
+        <div class="section-title">6. RESCISÃO:</div>
+        <div class="section-content">
+            O presente contrato poderá ser rescindido por qualquer uma das partes mediante notificação prévia por escrito de <strong>10 (dez) dias</strong>. Em caso de rescisão, os valores pagos pela CONTRATANTE serão devolvidos proporcionalmente aos serviços já realizados pela CONTRATADA.<br><br>
+            
+            Em caso de descumprimento das cláusulas deste contrato, a parte prejudicada poderá rescindir o contrato sem prejuízo de cobrar por eventuais danos e perdas.
+        </div>
+
+        <div class="section-title">7. DISPOSIÇÕES GERAIS:</div>
+        <div class="section-content">
+            As partes concordam em agir de boa-fé durante toda a vigência deste contrato.
+        </div>
+
+        <div class="signatures-section">
+            <p><strong>${cidade}</strong>, <strong>${currentDate}</strong></p>
+            
+            <div class="signature-box">
+                <div class="signature-line">
+                    <strong>${contratanteNome}</strong><br>
+                    CONTRATANTE
+                </div>
+            </div>
+            
+            <div class="signature-box">
+                <div class="signature-line">
+                    <strong>${contratadoNome}</strong><br>
+                    CONTRATADO
+                </div>
+            </div>
         </div>
     </div>
 </body>

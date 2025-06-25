@@ -9,33 +9,20 @@ const ExportSchema = z.object({
   template: z.string().optional().default("classic"),
 })
 
-// Template HTML Clássico com CSS inline para PDF
+// Substituir a função generateClassicHTMLTemplate para usar o mesmo modelo:
+
 const generateClassicHTMLTemplate = (title: string, content: string, contractType?: string) => {
-  // Processar o conteúdo para HTML formatado
+  // Se o conteúdo já é HTML (vem da nova função), retorna direto
+  if (content.includes("<!DOCTYPE html>")) {
+    return content
+  }
+
+  // Caso contrário, processa o conteúdo texto para HTML
   const processedContent = content
     .replace(
       /CONTRATO DE PRESTAÇÃO DE SERVIÇOS PROFISSIONAIS/g,
-      '<h1 class="contract-title">CONTRATO DE PRESTAÇÃO DE SERVIÇOS PROFISSIONAIS</h1>',
+      '<h1 class="contract-title">CONTRATO DE PRESTAÇÃO DE SERVIÇO</h1>',
     )
-    .replace(/CONTRATANTE:/g, '<h2 class="section-title">CONTRATANTE:</h2>')
-    .replace(/CONTRATADO:/g, '<h2 class="section-title">CONTRATADO:</h2>')
-    .replace(/DATA:/g, '<h3 class="subsection-title">DATA:</h3>')
-    .replace(/TÍTULO DO CONTRATO:/g, '<h2 class="section-title">TÍTULO DO CONTRATO:</h2>')
-    .replace(/OBJETO PRINCIPAL:/g, '<h2 class="section-title">OBJETO PRINCIPAL:</h2>')
-    .replace(/OBJETO DETALHADO:/g, '<h2 class="section-title">OBJETO DETALHADO:</h2>')
-    .replace(/ESPECIFICAÇÕES TÉCNICAS:/g, '<h2 class="section-title">ESPECIFICAÇÕES TÉCNICAS:</h2>')
-    .replace(/OBRIGAÇÕES DO CONTRATADO:/g, '<h2 class="section-title">OBRIGAÇÕES DO CONTRATADO:</h2>')
-    .replace(/OBRIGAÇÕES DO CONTRATANTE:/g, '<h2 class="section-title">OBRIGAÇÕES DO CONTRATANTE:</h2>')
-    .replace(/CONDIÇÕES DE PAGAMENTO:/g, '<h2 class="section-title">CONDIÇÕES DE PAGAMENTO:</h2>')
-    .replace(/PRAZO DE EXECUÇÃO:/g, '<h2 class="section-title">PRAZO DE EXECUÇÃO:</h2>')
-    .replace(/CLAUSULAS ESPECIAIS:/g, '<h2 class="section-title">CLÁUSULAS ESPECIAIS:</h2>')
-    .replace(/RESCISÃO:/g, '<h2 class="section-title">RESCISÃO:</h2>')
-    .replace(/PROPRIEDADE INTELECTUAL:/g, '<h2 class="section-title">PROPRIEDADE INTELECTUAL:</h2>')
-    .replace(/CONFIDENCIALIDADE:/g, '<h2 class="section-title">CONFIDENCIALIDADE:</h2>')
-    .replace(/GARANTIAS:/g, '<h2 class="section-title">GARANTIAS:</h2>')
-    .replace(/DISPOSIÇÕES LEGAIS:/g, '<h2 class="section-title">DISPOSIÇÕES LEGAIS:</h2>')
-    .replace(/REFERÊNCIAS LEGAIS:/g, '<h2 class="section-title">REFERÊNCIAS LEGAIS:</h2>')
-    .replace(/- ([A-Z][^:]+):/g, '<h3 class="item-title">$1:</h3>')
     .replace(/\n\n/g, '</p><p class="paragraph">')
     .replace(/\n/g, "<br>")
 
@@ -55,7 +42,7 @@ const generateClassicHTMLTemplate = (title: string, content: string, contractTyp
         body {
             font-family: 'Times New Roman', serif;
             font-size: 12pt;
-            line-height: 1.6;
+            line-height: 1.5;
             color: #000;
             margin: 0;
             padding: 20px;
@@ -66,104 +53,12 @@ const generateClassicHTMLTemplate = (title: string, content: string, contractTyp
             max-width: 800px;
             margin: 0 auto;
             background: white;
-            padding: 40px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        
-        .contract-title {
-            text-align: center;
-            font-size: 18pt;
-            font-weight: bold;
-            margin: 0 0 30px 0;
-            padding: 20px 0;
-            border-bottom: 3px solid #2563eb;
-            color: #1e40af;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .section-title {
-            font-size: 14pt;
-            font-weight: bold;
-            margin: 25px 0 10px 0;
-            color: #1e40af;
-            text-transform: uppercase;
-            border-left: 4px solid #2563eb;
-            padding-left: 10px;
-        }
-        
-        .subsection-title {
-            font-size: 12pt;
-            font-weight: bold;
-            margin: 15px 0 8px 0;
-            color: #374151;
-        }
-        
-        .item-title {
-            font-size: 11pt;
-            font-weight: bold;
-            margin: 12px 0 5px 0;
-            color: #4b5563;
+            padding: 30px;
         }
         
         .paragraph {
             margin: 10px 0;
             text-align: justify;
-            text-indent: 20px;
-        }
-        
-        .contract-info {
-            background: #f8fafc;
-            padding: 15px;
-            margin: 20px 0;
-            border-left: 4px solid #10b981;
-            border-radius: 0 5px 5px 0;
-        }
-        
-        .party-info {
-            background: #fef7f0;
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: 5px;
-            border: 1px solid #fed7aa;
-        }
-        
-        .legal-references {
-            background: #f0f9ff;
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 5px;
-            border: 1px solid #bae6fd;
-            font-size: 10pt;
-        }
-        
-        .signature-section {
-            margin-top: 50px;
-            padding-top: 30px;
-            border-top: 2px solid #e5e7eb;
-        }
-        
-        .signature-line {
-            margin: 40px 0;
-            text-align: center;
-        }
-        
-        .signature-line::before {
-            content: "";
-            display: block;
-            width: 300px;
-            height: 1px;
-            background: #000;
-            margin: 0 auto 10px auto;
-        }
-        
-        .footer {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
-            text-align: center;
-            font-size: 10pt;
-            color: #6b7280;
         }
         
         @media print {
@@ -178,28 +73,7 @@ const generateClassicHTMLTemplate = (title: string, content: string, contractTyp
 </head>
 <body>
     <div class="contract-container">
-        <p class="paragraph">${processedContent}</p>
-        
-        <div class="signature-section">
-            <div class="signature-line">
-                <strong>CONTRATANTE</strong><br>
-                Nome: _________________________________<br>
-                CPF/CNPJ: _____________________________<br>
-                Assinatura: ____________________________
-            </div>
-            
-            <div class="signature-line">
-                <strong>CONTRATADO</strong><br>
-                Nome: _________________________________<br>
-                CPF: __________________________________<br>
-                Assinatura: ____________________________
-            </div>
-        </div>
-        
-        <div class="footer">
-            <p>Documento gerado em ${new Date().toLocaleDateString("pt-BR")} às ${new Date().toLocaleTimeString("pt-BR")}</p>
-            <p><strong>Este documento foi gerado por IA especializada em direito.</strong> Consulte um advogado antes de usar em situações formais.</p>
-        </div>
+        ${processedContent}
     </div>
 </body>
 </html>`
