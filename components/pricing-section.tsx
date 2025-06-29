@@ -77,7 +77,7 @@ export default function PricingSection() {
 
   const comparisonFeatures = [
     {
-      feature: "Contratos Simples (CONTRATO TURBO)",
+              feature: "Contratos GPT-4o-mini Avançados",
       basic: "100/mês",
       professional: "500/mês",
       enterprise: "1.000/mês",
@@ -166,7 +166,7 @@ export default function PricingSection() {
                 🎉 Teste Grátis - Sem Compromisso
               </h3>
               <p className="text-lg text-gray-700 dark:text-gray-300 mb-4">
-                <strong>5 contratos simples</strong> com CONTRATO TURBO antes de assinar qualquer plano
+                <strong>10 contratos GPT-4o-mini</strong> avançados antes de assinar qualquer plano
               </p>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
                 * PDFs exportados no teste grátis incluem marca d'água "NEXAR IA" para demonstração

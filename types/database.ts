@@ -52,7 +52,6 @@ export interface Database {
           user_id: string
           plano: string
           status: string
-          creditos_simples: number
           creditos_avancados: number
           data_expiracao: string
           created_at: string
@@ -63,7 +62,6 @@ export interface Database {
           user_id: string
           plano?: string
           status?: string
-          creditos_simples?: number
           creditos_avancados?: number
           data_expiracao?: string
           created_at?: string
@@ -72,7 +70,6 @@ export interface Database {
         Update: {
           plano?: string
           status?: string
-          creditos_simples?: number
           creditos_avancados?: number
           data_expiracao?: string
           updated_at?: string
@@ -84,7 +81,7 @@ export interface Database {
           user_id: string
           nome: string
           descricao: string
-          tipo: "simples" | "avancado"
+          tipo: "avancado"
           conteudo: string | null
           status: string
           created_at: string
@@ -95,7 +92,7 @@ export interface Database {
           user_id: string
           nome: string
           descricao: string
-          tipo: "simples" | "avancado"
+          tipo?: "avancado"
           conteudo?: string | null
           status?: string
           created_at?: string
@@ -104,7 +101,7 @@ export interface Database {
         Update: {
           nome?: string
           descricao?: string
-          tipo?: "simples" | "avancado"
+          tipo?: "avancado"
           conteudo?: string | null
           status?: string
           updated_at?: string

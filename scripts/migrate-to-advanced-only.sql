@@ -1,0 +1,1 @@
+-- O script está corrigido em: scripts/migrate-to-advanced-only.sql

@@ -163,8 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user_id: userId,
         plano: "teste_gratis",
         status: "active",
-        creditos_simples: 5,
-        creditos_avancados: 0,
+        creditos_avancados: 10,
         data_expiracao: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       }
 

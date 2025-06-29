@@ -111,25 +111,20 @@ export default function SubscriptionPage() {
       // Simulação de processamento de pagamento
       await new Promise((resolve) => setTimeout(resolve, 2000))
 
-      // Determinar créditos com base no plano
-      let creditos_simples = 0
+      // Determinar créditos avançados (GPT-4o-mini) com base no plano
       let creditos_avancados = 0
 
       switch (planId) {
         case "basico":
-          creditos_simples = 100
           creditos_avancados = 50
           break
         case "profissional":
-          creditos_simples = 500
-          creditos_avancados = 250
+          creditos_avancados = 200
           break
         case "empresarial":
-          creditos_simples = 1000
           creditos_avancados = 500
           break
         case "super_ilimitado":
-          creditos_simples = 9999
           creditos_avancados = 9999
           break
       }
@@ -149,7 +144,6 @@ export default function SubscriptionPage() {
         .update({
           plano: planId,
           status: "active",
-          creditos_simples,
           creditos_avancados,
           data_expiracao: expirationDate.toISOString(),
         })
@@ -231,15 +225,10 @@ export default function SubscriptionPage() {
                 </p>
               </div>
               <div>
-                <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Créditos Disponíveis</h3>
-                <div className="flex gap-4">
-                  <p className="text-gray-900 dark:text-white">
-                    <span className="font-semibold">{subscription?.creditos_simples || 0}</span> simples
-                  </p>
-                  <p className="text-gray-900 dark:text-white">
-                    <span className="font-semibold">{subscription?.creditos_avancados || 0}</span> avançados
-                  </p>
-                </div>
+                <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Créditos GPT-4o-mini</h3>
+                <p className="text-gray-900 dark:text-white">
+                  <span className="font-semibold text-purple-600">{subscription?.creditos_avancados || 0}</span> contratos disponíveis
+                </p>
               </div>
             </div>
 

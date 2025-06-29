@@ -111,7 +111,7 @@ export default function QuickActionCard({
               hover:scale-105 active:scale-95
               ${getButtonStyles()}
             `}
-            variant={variant}
+            variant={variant === "primary" ? "default" : variant}
             size="lg"
           >
             {buttonText}

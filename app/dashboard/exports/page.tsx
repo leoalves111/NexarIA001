@@ -1,292 +1,430 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useAuth } from "@/hooks/useAuth"
-import { Card, CardContent } from "@/components/ui/card"
+import DashboardLayout from "@/components/dashboard/dashboard-layout"
+import { useSavedContracts, SavedContract } from "@/hooks/use-saved-contracts"
+import { useToast } from "@/hooks/use-toast"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { FileText, Download, Search, Trash2, Eye, Calendar, Clock, Loader2 } from "lucide-react"
-import { supabase } from "@/lib/supabase"
-import { useToast } from "@/hooks/use-toast"
-import DashboardLayout from "@/components/dashboard/dashboard-layout"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
+import { 
+  Search, 
+  FileText, 
+  Download, 
+  Eye, 
+  Copy, 
+  Trash2, 
+  MoreVertical,
+  Calendar,
+  User,
+  Building,
+  DollarSign,
+  Filter,
+  SortAsc,
+  SortDesc
+} from "lucide-react"
 
-interface Contract {
-  id: string
-  nome: string
-  descricao: string
-  tipo: "simples" | "avancado"
-  status: string
-  created_at: string
-  updated_at: string
-}
+type SortOption = 'recent' | 'oldest' | 'name' | 'type' | 'value'
+type SortOrder = 'asc' | 'desc'
 
 export default function ExportsPage() {
-  const [contracts, setContracts] = useState<Contract[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedType, setSelectedType] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState<string | null>(null)
-  const [viewingContract, setViewingContract] = useState<Contract | null>(null)
-  const [contractContent, setContractContent] = useState<string>("")
-
-  const { user } = useAuth()
+  const { savedContracts, loading, deleteContract, duplicateContract, searchContracts } = useSavedContracts()
   const { toast } = useToast()
+  
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedContract, setSelectedContract] = useState<SavedContract | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
+  const [sortBy, setSortBy] = useState<SortOption>('recent')
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+  const [filterType, setFilterType] = useState<string>('all')
 
-  useEffect(() => {
-    if (user) {
-      fetchContracts()
+  // Contratos filtrados e ordenados
+  const filteredContracts = () => {
+    let contracts = searchQuery ? searchContracts(searchQuery) : savedContracts
+    
+    // Filtrar por tipo
+    if (filterType !== 'all') {
+      contracts = contracts.filter(c => c.tipo === filterType)
     }
-  }, [user])
-
-  const fetchContracts = async () => {
-    try {
-      const { data, error } = await supabase.from("contracts").select("*").order("created_at", { ascending: false })
-
-      if (error) throw error
-
-      setContracts(data || [])
-    } catch (error) {
-      console.error("Error fetching contracts:", error)
-      toast({
-        title: "Erro ao carregar contratos",
-        description: "Não foi possível carregar seus contratos.",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const deleteContract = async (id: string) => {
-    setDeleting(id)
-    try {
-      const { error } = await supabase.from("contracts").delete().eq("id", id)
-
-      if (error) throw error
-
-      setContracts(contracts.filter((contract) => contract.id !== id))
-      toast({
-        title: "Contrato excluído",
-        description: "O contrato foi excluído com sucesso.",
-      })
-    } catch (error) {
-      console.error("Error deleting contract:", error)
-      toast({
-        title: "Erro ao excluir",
-        description: "Não foi possível excluir o contrato.",
-        variant: "destructive",
-      })
-    } finally {
-      setDeleting(null)
-    }
-  }
-
-  const viewContract = async (contract: Contract) => {
-    setViewingContract(contract)
-    try {
-      // Normalmente você buscaria o conteúdo do contrato aqui
-      // Para este exemplo, vamos simular um conteúdo
-      const { data, error } = await supabase.from("contracts").select("conteudo").eq("id", contract.id).single()
-
-      if (error) throw error
-
-      setContractContent(data.conteudo || "Conteúdo não disponível")
-    } catch (error) {
-      console.error("Error fetching contract content:", error)
-      setContractContent("Erro ao carregar o conteúdo do contrato.")
-    }
-  }
-
-  const downloadContract = (contract: Contract) => {
-    // Criar um blob com o conteúdo do contrato
-    const blob = new Blob([contractContent], { type: "text/plain" })
-    const url = URL.createObjectURL(blob)
-
-    // Criar um link temporário e clicar nele para iniciar o download
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `${contract.nome}.txt`
-    document.body.appendChild(a)
-    a.click()
-
-    // Limpar
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
+    
+    // Ordenar
+    return contracts.sort((a, b) => {
+      let comparison = 0
+      
+      switch (sortBy) {
+        case 'recent':
+          comparison = new Date(b.dataModificacao).getTime() - new Date(a.dataModificacao).getTime()
+          break
+        case 'oldest':
+          comparison = new Date(a.dataGeracao).getTime() - new Date(b.dataGeracao).getTime()
+          break
+        case 'name':
+          comparison = a.titulo.localeCompare(b.titulo)
+          break
+        case 'type':
+          comparison = a.tipo.localeCompare(b.tipo)
+          break
+        case 'value':
+          const valueA = parseFloat(a.valor.replace(/[^\d,]/g, '').replace(',', '.')) || 0
+          const valueB = parseFloat(b.valor.replace(/[^\d,]/g, '').replace(',', '.')) || 0
+          comparison = valueA - valueB
+          break
+      }
+      
+      return sortOrder === 'asc' ? comparison : -comparison
     })
   }
 
-  const filteredContracts = contracts.filter((contract) => {
-    const matchesSearch =
-      contract.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      contract.descricao.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesType = selectedType ? contract.tipo === selectedType : true
-    return matchesSearch && matchesType
-  })
+  // Tipos únicos para filtro
+  const uniqueTypes = Array.from(new Set(savedContracts.map(c => c.tipo)))
+
+  // Função para baixar contrato como PDF
+  const downloadPDF = (contract: SavedContract) => {
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${contract.titulo}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+            @media print { body { margin: 0; } }
+          </style>
+        </head>
+        <body>
+          ${contract.html}
+          <script>
+            window.onload = function() {
+              window.print();
+              window.close();
+            }
+          </script>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+  }
+
+  // Função para duplicar contrato
+  const handleDuplicate = (contract: SavedContract) => {
+    try {
+      duplicateContract(contract.id)
+      toast({
+        title: "✅ Contrato duplicado!",
+        description: `"${contract.titulo}" foi duplicado com sucesso`
+      })
+    } catch (error) {
+      toast({
+        title: "❌ Erro ao duplicar",
+        description: "Não foi possível duplicar o contrato",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // Função para deletar contrato
+  const handleDelete = (contract: SavedContract) => {
+    try {
+      deleteContract(contract.id)
+      toast({
+        title: "🗑️ Contrato excluído",
+        description: `"${contract.titulo}" foi excluído`
+      })
+    } catch (error) {
+      toast({
+        title: "❌ Erro ao excluir",
+        description: "Não foi possível excluir o contrato",
+        variant: "destructive"
+      })
+    }
+  }
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Carregando contratos...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Contratos Exportados</h1>
-          <p className="text-gray-600 dark:text-gray-400">Gerencie todos os seus contratos gerados e exportados</p>
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
+            📄 Contratos Salvos
+          </h1>
+          <p className="text-xl text-gray-600 dark:text-gray-400 max-w-3xl mx-auto">
+            Gerencie, visualize e baixe todos os seus contratos gerados pela IA.
+          </p>
         </div>
 
-        {/* Search and Filter */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
-            <Input
-              placeholder="Buscar contratos..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant={selectedType === null ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedType(null)}
-            >
-              Todos
-            </Button>
-            <Button
-              variant={selectedType === "simples" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedType("simples")}
-            >
-              Simples
-            </Button>
-            <Button
-              variant={selectedType === "avancado" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedType("avancado")}
-            >
-              Avançados
-            </Button>
-          </div>
+        {/* Estatísticas */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <Card>
+            <CardContent className="p-4 text-center">
+              <FileText className="h-8 w-8 text-blue-600 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-blue-600">{savedContracts.length}</p>
+              <p className="text-sm text-gray-500">Total de Contratos</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <Calendar className="h-8 w-8 text-green-600 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-green-600">
+                {savedContracts.filter(c => {
+                  const today = new Date()
+                  const contractDate = new Date(c.dataGeracao)
+                  const diffTime = Math.abs(today.getTime() - contractDate.getTime())
+                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+                  return diffDays <= 7
+                }).length}
+              </p>
+              <p className="text-sm text-gray-500">Esta Semana</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <Building className="h-8 w-8 text-purple-600 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-purple-600">{uniqueTypes.length}</p>
+              <p className="text-sm text-gray-500">Tipos Diferentes</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <DollarSign className="h-8 w-8 text-orange-600 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-orange-600">
+                R$ {savedContracts.reduce((total, contract) => {
+                  const value = parseFloat(contract.valor.replace(/[^\d,]/g, '').replace(',', '.')) || 0
+                  return total + value
+                }, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </p>
+              <p className="text-sm text-gray-500">Valor Total</p>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Contracts List */}
-        {loading ? (
-          <div className="flex justify-center items-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-          </div>
-        ) : filteredContracts.length > 0 ? (
-          <div className="space-y-4">
-            {filteredContracts.map((contract) => (
-              <Card key={contract.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* Controles */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex flex-col md:flex-row gap-4 items-center">
+              {/* Busca */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Buscar por título, tipo, partes..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+
+              {/* Filtro por tipo */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <Filter className="h-4 w-4" />
+                    {filterType === 'all' ? 'Todos os Tipos' : filterType}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => setFilterType('all')}>
+                    Todos os Tipos
+                  </DropdownMenuItem>
+                  {uniqueTypes.map(type => (
+                    <DropdownMenuItem key={type} onClick={() => setFilterType(type)}>
+                      {type}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Ordenação */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    {sortOrder === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
+                    Ordenar
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => { setSortBy('recent'); setSortOrder('desc') }}>
+                    Mais Recentes
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setSortBy('oldest'); setSortOrder('asc') }}>
+                    Mais Antigos
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setSortBy('name'); setSortOrder('asc') }}>
+                    Nome (A-Z)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setSortBy('type'); setSortOrder('asc') }}>
+                    Tipo (A-Z)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setSortBy('value'); setSortOrder('desc') }}>
+                    Maior Valor
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Lista de Contratos */}
+        {filteredContracts().length === 0 ? (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-600 mb-2">
+                {searchQuery || filterType !== 'all' ? 'Nenhum contrato encontrado' : 'Nenhum contrato salvo'}
+              </h3>
+              <p className="text-gray-500 mb-4">
+                {searchQuery || filterType !== 'all' 
+                  ? 'Tente ajustar os filtros de busca'
+                  : 'Comece gerando seu primeiro contrato no Gerador'
+                }
+              </p>
+              {!searchQuery && filterType === 'all' && (
+                <Button onClick={() => window.location.href = '/dashboard/generator'}>
+                  Gerar Primeiro Contrato
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredContracts().map((contract) => (
+              <Card key={contract.id} className="hover:shadow-lg transition-shadow">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-5 w-5 text-primary-600" />
-                        <h3 className="font-medium text-gray-900 dark:text-white">{contract.nome}</h3>
-                        <Badge variant={contract.tipo === "simples" ? "default" : "secondary"} className="ml-2">
-                          {contract.tipo === "simples" ? "Simples" : "Avançado"}
+                      <CardTitle className="text-lg mb-2 line-clamp-2">
+                        {contract.titulo}
+                      </CardTitle>
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        <Badge variant="outline" className="text-xs">
+                          {contract.tipoPersonalizado || contract.tipo}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                          {contract.tamanho}
                         </Badge>
                       </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{contract.descricao}</p>
-                      <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        <div className="flex items-center">
-                          <Calendar className="h-3 w-3 mr-1" />
-                          {formatDate(contract.created_at)}
-                        </div>
-                        <div className="flex items-center">
-                          <Clock className="h-3 w-3 mr-1" />
-                          {new Date(contract.updated_at).toLocaleTimeString("pt-BR", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </div>
-                      </div>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem onClick={() => { setSelectedContract(contract); setShowPreview(true) }}>
+                          <Eye className="h-4 w-4 mr-2" />
+                          Visualizar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => downloadPDF(contract)}>
+                          <Download className="h-4 w-4 mr-2" />
+                          Baixar PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDuplicate(contract)}>
+                          <Copy className="h-4 w-4 mr-2" />
+                          Duplicar
+                        </DropdownMenuItem>
+                        <Separator />
+                        <DropdownMenuItem 
+                          onClick={() => handleDelete(contract)}
+                          className="text-red-600 focus:text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Excluir
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="space-y-2 text-sm text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      <span>{contract.contratante.nome}</span>
+                      <span className="text-gray-400">→</span>
+                      <span>{contract.contratada.nome}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => viewContract(contract)}
-                        className="flex items-center gap-1"
-                      >
-                        <Eye className="h-4 w-4" />
-                        <span className="hidden sm:inline">Visualizar</span>
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => deleteContract(contract.id)}
-                        disabled={deleting === contract.id}
-                        className="flex items-center gap-1"
-                      >
-                        {deleting === contract.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                        <span className="hidden sm:inline">Excluir</span>
-                      </Button>
+                      <DollarSign className="h-4 w-4" />
+                      <span className="font-medium text-green-600">{contract.valor}</span>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      <span>{new Date(contract.dataGeracao).toLocaleDateString('pt-BR')}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2 mt-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setSelectedContract(contract); setShowPreview(true) }}
+                      className="flex-1"
+                    >
+                      <Eye className="h-4 w-4 mr-1" />
+                      Ver
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => downloadPDF(contract)}
+                      className="flex-1"
+                    >
+                      <Download className="h-4 w-4 mr-1" />
+                      PDF
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
-        ) : (
-          <div className="text-center py-12">
-            <FileText className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-white">Nenhum contrato encontrado</h3>
-            <p className="mt-1 text-gray-500 dark:text-gray-400">
-              {searchTerm || selectedType
-                ? "Tente ajustar seus filtros ou termos de busca"
-                : "Você ainda não gerou nenhum contrato"}
-            </p>
-            {!searchTerm && !selectedType && (
-              <Button
-                className="mt-4 bg-primary-600 hover:bg-primary-700"
-                onClick={() => (window.location.href = "/dashboard/generator")}
-              >
-                Gerar Novo Contrato
-              </Button>
-            )}
-          </div>
         )}
 
-        {/* Contract Viewer Modal */}
-        {viewingContract && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col">
-              <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white">{viewingContract.nome}</h3>
-                <div className="flex items-center gap-2">
+        {/* Modal de Preview */}
+        <Dialog open={showPreview} onOpenChange={setShowPreview}>
+          <DialogContent className="max-w-6xl max-h-[95vh] p-0">
+            <DialogHeader className="p-6 pb-0">
+              <DialogTitle className="flex items-center justify-between">
+                <span>{selectedContract?.titulo}</span>
+                <div className="flex gap-2">
                   <Button
+                    variant="outline"
                     size="sm"
-                    onClick={() => downloadContract(viewingContract)}
-                    className="bg-primary-600 hover:bg-primary-700"
+                    onClick={() => selectedContract && downloadPDF(selectedContract)}
                   >
-                    <Download className="h-4 w-4 mr-1" />
-                    Download
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setViewingContract(null)}>
-                    Fechar
+                    <Download className="h-4 w-4 mr-2" />
+                    Baixar PDF
                   </Button>
                 </div>
-              </div>
-              <div className="p-4 overflow-y-auto flex-1">
-                <pre className="whitespace-pre-wrap text-sm text-gray-900 dark:text-gray-100 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                  {contractContent}
-                </pre>
-              </div>
-            </div>
-          </div>
-        )}
+              </DialogTitle>
+            </DialogHeader>
+            <ScrollArea className="max-h-[80vh] p-6">
+              {selectedContract && (
+                <div 
+                  className="prose max-w-none"
+                  dangerouslySetInnerHTML={{ __html: selectedContract.html }}
+                />
+              )}
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )

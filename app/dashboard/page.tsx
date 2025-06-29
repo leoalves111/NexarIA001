@@ -10,7 +10,7 @@ import QuickActionCard from "@/components/dashboard/quick-action-card"
 import AlertBanner from "@/components/dashboard/alert-banner"
 
 export default function DashboardPage() {
-  const { user, profile, subscription, loading, isDemo } = useAuth()
+  const { user, profile, subscription, loading } = useAuth()
 
   if (loading) {
     return (
@@ -25,7 +25,7 @@ export default function DashboardPage() {
     )
   }
 
-  if (!user && !isDemo) {
+  if (!user) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[400px]">
@@ -61,11 +61,6 @@ export default function DashboardPage() {
         <div className="text-center lg:text-left">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white leading-relaxed">
             Olá, {profile?.nome || "Usuário"}! 👋
-            {isDemo && (
-              <span className="inline-block ml-3 px-3 py-1 text-sm bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-200 rounded-full">
-                Modo Demo
-              </span>
-            )}
           </h1>
           <p className="text-lg text-gray-600 dark:text-gray-400 leading-relaxed mt-2">
             Bem-vindo ao seu painel de controle do NEXAR IA
@@ -86,17 +81,9 @@ export default function DashboardPage() {
           />
 
           <StatusCard
-            title="Créditos Simples"
-            value={subscription?.creditos_simples || 0}
-            subtitle="CONTRATO TURBO"
-            icon={Sparkles}
-            variant="primary"
-          />
-
-          <StatusCard
-            title="Créditos Avançados"
+            title="Créditos GPT-4o-mini"
             value={subscription?.creditos_avancados || 0}
-            subtitle="CONTRATO AVANÇADO"
+            subtitle="CONTRATO IA AVANÇADO"
             icon={Zap}
             variant="warning"
           />
