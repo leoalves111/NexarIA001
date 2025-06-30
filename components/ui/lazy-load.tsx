@@ -82,4 +82,4 @@ export function useLazyLoad<T>(
   }, dependencies)
 
   return { data, loading, error, load }
-} 
+}

@@ -448,4 +448,4 @@ COMMIT;
 
 -- 🎊 FIM DO SCRIPT
 -- Execute este script no SQL Editor do Supabase
--- Sistema totalmente otimizado para GPT-4o-mini avançado! 
+-- Sistema totalmente otimizado para GPT-4o-mini avançado!

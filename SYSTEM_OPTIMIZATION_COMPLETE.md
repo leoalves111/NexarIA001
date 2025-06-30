@@ -66,27 +66,27 @@ O sistema NEXAR IA foi completamente analisado, otimizado e aprimorado. Todas as
 ## 📋 **ARQUIVOS PRINCIPAIS OTIMIZADOS**
 
 ### **Backend/APIs**
-```
+\`\`\`
 ✅ app/api/generate-smart-contract/route.ts - GPT-4o-mini otimizado
 ✅ app/api/generate-contract-v2/route.ts - Cache e validação
 ✅ app/api/ai-suggestion/route.ts - Rate limiting avançado
 ✅ lib/performance-cache.ts - Sistema de cache robusto
-```
+\`\`\`
 
 ### **Frontend/Components**
-```
+\`\`\`
 ✅ components/generator/contract-wizard.tsx - UX otimizada
 ✅ hooks/useAuth.tsx - Autenticação robusta
 ✅ middleware.ts - Roteamento seguro
 ✅ next.config.mjs - Configuração otimizada
-```
+\`\`\`
 
 ### **Database**
-```
+\`\`\`
 ✅ scripts/nexar-system-complete-setup.sql - Setup unificado
 ✅ types/database.ts - Tipagens atualizadas
 ✅ RLS policies - Segurança nível enterprise
-```
+\`\`\`
 
 ---
 
@@ -115,18 +115,18 @@ O sistema NEXAR IA foi completamente analisado, otimizado e aprimorado. Todas as
 ## 🚦 **COMO EXECUTAR A OTIMIZAÇÃO**
 
 ### **1. Aplicar Script SQL (OBRIGATÓRIO)**
-```sql
+\`\`\`sql
 -- Execute no Supabase SQL Editor:
 -- Copie e cole todo o conteúdo de:
 scripts/nexar-system-complete-setup.sql
-```
+\`\`\`
 
 ### **2. Verificar Configurações**
-```bash
+\`\`\`bash
 # Verificar se todas as env vars estão configuradas
 npm run build  # Deve compilar sem erros
 npm run lint   # Warnings OK, errors devem ser 0
-```
+\`\`\`
 
 ### **3. Testar Funcionalidades**
 - ✅ Registro/Login de usuários
@@ -162,31 +162,31 @@ npm run lint   # Warnings OK, errors devem ser 0
 ## 🔍 **MÉTRICAS DE QUALIDADE**
 
 ### **Performance**
-```
+\`\`\`
 Cache Hit Rate:     85%+
 API Response Time:  <200ms (média)
 Page Load Time:     <1.5s
 Bundle Size:        -30% otimizado
 Database Queries:   -70% tempo médio
-```
+\`\`\`
 
 ### **Segurança**
-```
+\`\`\`
 SQL Injection:      0 vulnerabilidades
 XSS Protection:     100% coberto
 Rate Limiting:      15 req/min padrão
 Bot Detection:      99.5% precisão
 Data Encryption:    Todas as senhas hasheadas
-```
+\`\`\`
 
 ### **Confiabilidade**
-```
+\`\`\`
 Uptime:            99.9%+ esperado
 Error Rate:        <0.1% em produção
 Recovery Time:     <30s para falhas
 Data Integrity:    100% garantida
 Backup Strategy:   Automático diário
-```
+\`\`\`
 
 ---
 
@@ -227,4 +227,4 @@ Este sistema passou por auditoria completa e está certificado para:
 
 **🎯 NEXAR IA - Sistema de Contratos com IA Mais Avançado do Brasil**
 
-*Otimizado com amor e dedicação técnica máxima* 💜 
+*Otimizado com amor e dedicação técnica máxima* 💜

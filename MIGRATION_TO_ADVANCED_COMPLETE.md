@@ -38,13 +38,13 @@ O sistema NEXAR IA foi **completamente migrado** para usar **apenas o modo avan�
 ### 1. **Execute o Script SQL**
 Copie e execute o arquivo `scripts/migrate-to-advanced-only.sql` no **SQL Editor** do Supabase:
 
-```sql
+\`\`\`sql
 -- Todo o conteúdo do arquivo migrate-to-advanced-only.sql
 -- Já está preparado para execução direta
-```
+\`\`\`
 
 ### 2. **Verificar Após Migração**
-```sql
+\`\`\`sql
 -- Verificar estrutura atualizada
 SELECT column_name, data_type 
 FROM information_schema.columns 
@@ -59,7 +59,7 @@ GROUP BY plano;
 SELECT tipo, COUNT(*) 
 FROM contracts 
 GROUP BY tipo;
-```
+\`\`\`
 
 ---
 
@@ -185,4 +185,4 @@ O sistema NEXAR IA agora opera com **GPT-4o-mini exclusivamente**, oferecendo:
 - 🎯 **Experiência Consistente** para todos os usuários
 - 💪 **Tecnologia de Ponta** com OpenAI GPT-4o-mini
 
-**A migração está completa e pronta para produção!** 🚀 
+**A migração está completa e pronta para produção!** 🚀

@@ -142,4 +142,4 @@ export function usePromptProfiles() {
     getPopularProfiles,
     getProfilesByType
   }
-} 
+}

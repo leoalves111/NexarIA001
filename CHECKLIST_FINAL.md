@@ -31,10 +31,10 @@
 
 Adicione no seu arquivo `.env.local`:
 
-```bash
+\`\`\`bash
 # ⚠️ CRÍTICO - Adicione esta linha
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
+\`\`\`
 
 **Como encontrar:**
 1. Acesse: https://supabase.com/dashboard
@@ -45,18 +45,18 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ### 🗄️ Executar Script SQL (Se ainda não fez)
 
 Execute no SQL Editor do Supabase:
-```sql
+\`\`\`sql
 -- Cole todo o conteúdo do arquivo: scripts/nexar-system-complete-setup.sql
-```
+\`\`\`
 
 ## 🧪 TESTE FINAL
 
 1. **Reinicie o servidor**: `npm run dev`
 2. **Verifique os logs** no terminal - deve mostrar:
-   ```
+   \`\`\`
    🔍 [Config] SUPABASE_SERVICE_KEY: ✅ OK
    🔍 [Config] OPENAI_API_KEY: ✅ OK
-   ```
+   \`\`\`
 3. **Teste geração de contrato**
 4. **Deve funcionar perfeitamente**
 
@@ -73,4 +73,4 @@ Envie o log completo do terminal que mostrará exatamente qual configuração es
 ✅ Geração de contratos funcionando 100%  
 ✅ Pronto para produção  
 
-**Tempo estimado para correção: 2 minutos** 
+**Tempo estimado para correção: 2 minutos**

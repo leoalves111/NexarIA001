@@ -21,7 +21,7 @@ O erro `"column expires_at does not exist"` foi **completamente corrigido**. O s
 
 ### **3. ✅ Verificar Execução**
 O script deve executar com sucesso e mostrar mensagens como:
-```
+\`\`\`
 ✅ Créditos simples convertidos para avançados com sucesso!
 ✅ Contratos convertidos para tipo avançado!
 ✅ Coluna expires_at adicionada à tabela contract_cache!
@@ -35,7 +35,7 @@ O script deve executar com sucesso e mostrar mensagens como:
    📈 Média de Créditos: X
 🎯 Sistema 100% otimizado e funcionando!
 =============================================
-```
+\`\`\`
 
 ---
 
@@ -105,7 +105,7 @@ O script deve executar com sucesso e mostrar mensagens como:
 ## 📊 **APÓS A INSTALAÇÃO**
 
 ### **1. Verificar Sistema**
-```sql
+\`\`\`sql
 -- Execute para verificar migração
 SELECT 
     COUNT(*) as total_users,
@@ -116,7 +116,7 @@ FROM subscriptions;
 SELECT tipo, COUNT(*) 
 FROM contracts 
 GROUP BY tipo;
-```
+\`\`\`
 
 ### **2. Testar Funcionalidade**
 1. **Faça login** no sistema
@@ -125,14 +125,14 @@ GROUP BY tipo;
 4. **Confirme cache** funcionando
 
 ### **3. Configurar Limpeza Automática (Opcional)**
-```sql
+\`\`\`sql
 -- Executar separadamente se quiser limpeza automática
 SELECT cron.schedule(
     'cleanup-contract-cache', 
     '*/30 * * * *', 
     'SELECT public.cleanup_expired_cache();'
 );
-```
+\`\`\`
 
 ---
 
@@ -160,4 +160,4 @@ Se tiver qualquer problema:
 
 **🎯 NEXAR IA - Sistema 100% Otimizado e Funcionando!**
 
-*Script corrigido e testado para máxima compatibilidade* 💜 
+*Script corrigido e testado para máxima compatibilidade* 💜
