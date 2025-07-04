@@ -1,26 +1,17 @@
 import { z } from "zod"
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-import { adjustContractRoles, generateRoleIdentification } from "../../../utils/contract-roles"
+import { createServerClient } from "@supabase/ssr"
+import { adjustContractRoles } from "../../../utils/contract-roles"
 
 // Configurar Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabase = createClient(supabaseUrl, supabaseKey)
 
 // Cliente administrativo para operações que requerem privilégios especiais
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 if (!supabaseServiceKey) {
   console.error("❌ [Supabase] SUPABASE_SERVICE_ROLE_KEY não configurada")
-  throw new Error("Configuração de banco de dados incompleta")
 }
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-})
 
 const PersonSchema = z.object({
   tipo: z.enum(["pf", "pj"]),
@@ -59,12 +50,16 @@ const ContractSchema = z.object({
   prazo: z.string().min(1).max(100),
   observacoes: z.string().max(1000).optional(),
   template: z.string().optional(),
-  leisSelecionadas: z.array(z.object({
-    text: z.string(),
-    description: z.string(),
-    category: z.string().optional(),
-    context: z.string().optional()
-  })).optional() // Campo para leis selecionadas via OpenAI
+  leisSelecionadas: z
+    .array(
+      z.object({
+        text: z.string(),
+        description: z.string(),
+        category: z.string().optional(),
+        context: z.string().optional(),
+      }),
+    )
+    .optional(),
 })
 
 const GenerateSmartContractSchema = z.object({
@@ -75,10 +70,9 @@ const GenerateSmartContractSchema = z.object({
 
 // ✅ SISTEMA DE ECONOMIA DE TOKENS OTIMIZADO
 const optimizePromptForTokens = (prompt: string, observacoes?: string): string => {
-  // ✅ OTIMIZAÇÃO INTELIGENTE - Manter palavras importantes para detalhamento
   const optimizedPrompt = prompt
-    .replace(/\b(cordialmente|atenciosamente|respeitosamente)\b/gi, "") // Remove apenas cortesias desnecessárias
-    .replace(/\s+/g, " ") // Remove espaços extras
+    .replace(/\b(cordialmente|atenciosamente|respeitosamente)\b/gi, "")
+    .replace(/\s+/g, " ")
     .trim()
 
   const optimizedObservacoes = observacoes
@@ -86,7 +80,6 @@ const optimizePromptForTokens = (prompt: string, observacoes?: string): string =
     .replace(/\s+/g, " ")
     .trim()
 
-  // ✅ PRESERVAR palavras que indicam detalhamento: muito, bastante, detalhado, completo, etc.
   return `${optimizedPrompt}${optimizedObservacoes ? ` | Observações: ${optimizedObservacoes}` : ""}`
 }
 
@@ -101,29 +94,29 @@ const generateAIContract = async (data: z.infer<typeof GenerateSmartContractSche
 
   console.log(`🧠 [GPT-4o] Gerando contrato avançado baseado no prompt: "${contrato.prompt.substring(0, 100)}..."`)
 
-  // ✅ OTIMIZAR PROMPT PARA ECONOMIA DE TOKENS
   const optimizedUserPrompt = optimizePromptForTokens(contrato.prompt, contrato.observacoes)
 
   console.log(
     `💰 [Tokens] Prompt otimizado de ${contrato.prompt.length + (contrato.observacoes?.length || 0)} para ${optimizedUserPrompt.length} caracteres`,
   )
 
-  // ✅ AUTO-AJUSTAR PAPÉIS CONTRATUAIS
   const adjustedRoles = adjustContractRoles(contrato.tipo, contratante, contratada)
-  
-  // ✅ CONSTRUIR LEIS ESPECÍFICAS SELECIONADAS COM ARTIGOS
-  let leisEspecificas = ''
+
+  let leisEspecificas = ""
   if (contrato.leisSelecionadas && contrato.leisSelecionadas.length > 0) {
     leisEspecificas = `
 
 LEIS ESPECÍFICAS OBRIGATÓRIAS (DEVE USAR TODAS):
-${contrato.leisSelecionadas.map((lei, index) => 
-  `${index + 1}. ${lei.text}
+${contrato.leisSelecionadas
+  .map(
+    (lei, index) =>
+      `${index + 1}. ${lei.text}
    Descrição: ${lei.description}
-   ${lei.context ? `Contexto: ${lei.context}` : ''}
-   ${lei.category ? `Área: ${lei.category}` : ''}
-   ARTIGOS ESPECÍFICOS: Cite OBRIGATORIAMENTE os artigos exatos desta lei no contrato`
-).join('\n\n')}
+   ${lei.context ? `Contexto: ${lei.context}` : ""}
+   ${lei.category ? `Área: ${lei.category}` : ""}
+   ARTIGOS ESPECÍFICOS: Cite OBRIGATORIAMENTE os artigos exatos desta lei no contrato`,
+  )
+  .join("\n\n")}
 
 INSTRUÇÕES CRÍTICAS SOBRE LEIS:
 - CITE artigos, números de lei e dispositivos ESPECÍFICOS
@@ -132,7 +125,6 @@ INSTRUÇÕES CRÍTICAS SOBRE LEIS:
 - DEMONSTRE conformidade legal explícita com cada dispositivo`
   }
 
-  // ✅ IDENTIFICAÇÃO CLARA DOS PAPÉIS
   const roleIdentification = `
 
 PAPÉIS CONTRATUAIS AUTO-AJUSTADOS:
@@ -142,9 +134,6 @@ ${adjustedRoles.primary.role}: ${adjustedRoles.primary.nome} (${adjustedRoles.pr
 ${adjustedRoles.secondary.role}: ${adjustedRoles.secondary.nome} (${adjustedRoles.secondary.tipo === "pf" ? "PF" : "PJ"})
 - ${adjustedRoles.secondary.description}`
 
-  // ✅ SISTEMA GENÉRICO - SEM TEMPLATES FIXOS
-
-  // ✅ IA JURÍDICA ESPECIALIZADA - CONTRATOS SUPER COMPLETOS E PRECISOS
   const systemPrompt = `Você é um ADVOGADO ESPECIALISTA SÊNIOR com 30+ anos de experiência específica em Direito Contratual Brasileiro. Você é reconhecido pela OAB como especialista em elaboração de contratos com MÁXIMA SEGURANÇA JURÍDICA.
 
 EXPERTISE ESPECÍFICA POR ÁREA:
@@ -248,7 +237,7 @@ Retorne APENAS as cláusulas do contrato em HTML limpo, sem marcações de códi
         Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o", // ✅ GPT-4o para máxima qualidade
+        model: "gpt-4o",
         messages: [
           {
             role: "system",
@@ -259,11 +248,11 @@ Retorne APENAS as cláusulas do contrato em HTML limpo, sem marcações de códi
             content: optimizedUserPrompt,
           },
         ],
-        max_tokens: 16000, // ✅ MÁXIMO de tokens para contratos super completos
-        temperature: 0.2, // ✅ AJUSTADO: Precisão jurídica + criatividade para contratos completos
-        top_p: 0.9, // ✅ ADICIONADO: Melhor qualidade na geração
-        frequency_penalty: 0.1, // ✅ ADICIONADO: Evita repetições
-        presence_penalty: 0.1, // ✅ ADICIONADO: Incentiva conteúdo diversificado
+        max_tokens: 16000,
+        temperature: 0.2,
+        top_p: 0.9,
+        frequency_penalty: 0.1,
+        presence_penalty: 0.1,
       }),
     })
 
@@ -280,13 +269,12 @@ Retorne APENAS as cláusulas do contrato em HTML limpo, sem marcações de códi
       throw new Error("GPT-4o não retornou resposta")
     }
 
-    // ✅ LOG DE TOKENS UTILIZADOS
     const tokensUsed = responseData.usage?.total_tokens || 0
     console.log(`💰 [Tokens] Utilizados: ${tokensUsed} tokens (máx: 16.000)`)
     console.log(`✅ [GPT-4o] Contrato avançado gerado com ${aiClauses.length} caracteres`)
 
     return aiClauses
-      } catch (error) {
+  } catch (error) {
     console.error("❌ [GPT-4o] Erro:", error)
     throw error
   }
@@ -296,7 +284,6 @@ export async function POST(req: NextRequest) {
   try {
     console.log("🧠 [GPT-4o] Iniciando geração com IA avançada...")
 
-    // ✅ VERIFICAÇÃO COMPLETA DE CONFIGURAÇÃO
     console.log("🔍 [Config] Verificando configurações...")
     console.log("🔍 [Config] SUPABASE_URL:", process.env.NEXT_PUBLIC_SUPABASE_URL ? "✅ OK" : "❌ FALTANDO")
     console.log("🔍 [Config] SUPABASE_ANON_KEY:", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "✅ OK" : "❌ FALTANDO")
@@ -306,7 +293,6 @@ export async function POST(req: NextRequest) {
     const rawData = await req.json()
     console.log("📦 [GPT-4o] Dados recebidos para prompt:", rawData.contrato?.prompt?.substring(0, 100))
 
-    // ✅ VERIFICAÇÃO DE CRÉDITOS
     // Obter token de autenticação do header
     const authHeader = req.headers.get("authorization")
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -321,11 +307,23 @@ export async function POST(req: NextRequest) {
 
     const token = authHeader.replace("Bearer ", "")
 
-    // Verificar usuário autenticado
+    // Criar cliente Supabase para verificar usuário
+    const supabase = createServerClient(supabaseUrl, supabaseKey, {
+      cookies: {
+        get() {
+          return undefined
+        },
+        set() {},
+        remove() {},
+      },
+    })
+
+    // Verificar usuário autenticado usando o token
     const {
       data: { user },
       error: userError,
     } = await supabase.auth.getUser(token)
+
     if (userError || !user) {
       console.error("❌ [GPT-4o] Usuário não autenticado:", userError)
       return NextResponse.json(
@@ -339,11 +337,25 @@ export async function POST(req: NextRequest) {
 
     console.log(`🔐 [GPT-4o] Usuário autenticado: ${user.email}`)
 
-    // ✅ VERIFICAR/CRIAR SUBSCRIPTION COM CRÉDITOS GENEROSOS
+    // Verificar/Criar subscription com créditos
     let subscription
 
     try {
-      // Primeiro, tentar buscar subscription existente
+      if (!supabaseServiceKey) {
+        throw new Error("SUPABASE_SERVICE_ROLE_KEY não configurada")
+      }
+
+      const supabaseAdmin = createServerClient(supabaseUrl, supabaseServiceKey, {
+        cookies: {
+          get() {
+            return undefined
+          },
+          set() {},
+          remove() {},
+        },
+      })
+
+      // Buscar subscription existente
       const { data: existingSubscription, error: fetchError } = await supabaseAdmin
         .from("subscriptions")
         .select("creditos_avancados, plano, status")
@@ -359,14 +371,14 @@ export async function POST(req: NextRequest) {
         subscription = existingSubscription
         console.log(`✅ [GPT-4o-mini] Subscription existente encontrada: ${subscription.creditos_avancados} créditos`)
 
-        // Se a subscription existe mas tem 0 créditos, recarregar com créditos de teste
+        // Se tem 0 créditos, recarregar
         if (subscription.creditos_avancados <= 0) {
           console.log(`🔄 [GPT-4o-mini] Recarregando créditos para usuário: ${user.email}`)
 
           const { data: updatedSubscription, error: updateError } = await supabaseAdmin
             .from("subscriptions")
             .update({
-              creditos_avancados: 50, // 50 créditos generosos para teste
+              creditos_avancados: 50,
               updated_at: new Date().toISOString(),
             })
             .eq("user_id", user.id)
@@ -381,7 +393,7 @@ export async function POST(req: NextRequest) {
           }
         }
       } else {
-        // Criar nova subscription usando UPSERT para evitar duplicação
+        // Criar nova subscription
         console.log(`🆕 [GPT-4o-mini] Criando subscription automática para usuário: ${user.email}`)
 
         const { data: newSubscription, error: createError } = await supabaseAdmin
@@ -391,8 +403,8 @@ export async function POST(req: NextRequest) {
               user_id: user.id,
               plano: "teste_gratis",
               status: "active",
-              creditos_avancados: 50, // 50 créditos generosos para teste
-              data_expiracao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 dias
+              creditos_avancados: 50,
+              data_expiracao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             },
@@ -429,9 +441,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Verificar se subscription existe após todas as tentativas
     if (!subscription) {
-      console.error("❌ [GPT-4o-mini] Subscription não encontrada e não foi possível criar")
+      console.error("❌ [GPT-4o-mini] Subscription não encontrada")
       return NextResponse.json(
         {
           success: false,
@@ -441,72 +452,34 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ✅ VERIFICAÇÃO MAIS FLEXÍVEL DE CRÉDITOS
+    // Verificar créditos
     if (subscription.creditos_avancados <= 0) {
       console.warn(`⚠️ [GPT-4o-mini] Usuário ${user.email} sem créditos: ${subscription.creditos_avancados}`)
 
-      // Tentar recarregar créditos automaticamente uma vez
-      console.log(`🔄 [GPT-4o-mini] Tentando recarregar créditos automaticamente...`)
-
-      const { data: reloadedSubscription, error: reloadError } = await supabaseAdmin
-        .from("subscriptions")
-        .update({
-          creditos_avancados: 25, // 25 créditos de emergência
-          updated_at: new Date().toISOString(),
-        })
-        .eq("user_id", user.id)
-        .select("creditos_avancados, plano, status")
-        .single()
-
-      if (reloadError || !reloadedSubscription || reloadedSubscription.creditos_avancados <= 0) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Créditos insuficientes",
-            message: "Você não possui créditos GPT-4o-mini suficientes para gerar contratos avançados.",
-            currentCredits: subscription.creditos_avancados,
-          },
-          { status: 402 },
-        )
-      }
-
-      subscription = reloadedSubscription
-      console.log(`✅ [GPT-4o-mini] Créditos recarregados automaticamente: ${subscription.creditos_avancados}`)
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Créditos insuficientes",
+          message: "Você não possui créditos GPT-4o-mini suficientes para gerar contratos avançados.",
+          currentCredits: subscription.creditos_avancados,
+        },
+        { status: 402 },
+      )
     }
 
-    // Verificar se assinatura está ativa (mais flexível)
+    // Verificar se assinatura está ativa
     if (subscription.status !== "active" && subscription.status !== "ativa") {
-      // Ativar automaticamente se estiver inativa
-      console.log(`🔄 [GPT-4o-mini] Ativando subscription automaticamente...`)
-
-      const { data: activatedSubscription, error: activateError } = await supabaseAdmin
-        .from("subscriptions")
-        .update({
-          status: "active",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("user_id", user.id)
-        .select("creditos_avancados, plano, status")
-        .single()
-
-      if (activateError) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Assinatura inativa",
-            message: "Sua assinatura não está ativa. Renove para continuar usando.",
-          },
-          { status: 403 },
-        )
-      }
-
-      subscription = activatedSubscription
-      console.log(`✅ [GPT-4o-mini] Subscription ativada automaticamente`)
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Assinatura inativa",
+          message: "Sua assinatura não está ativa. Renove para continuar usando.",
+        },
+        { status: 403 },
+      )
     }
 
     console.log(`💰 [GPT-4o-mini] Usuário tem ${subscription.creditos_avancados} créditos disponíveis`)
-
-    console.log("🔍 [GPT-4o-mini] Dados brutos recebidos:", JSON.stringify(rawData, null, 2))
 
     const validationResult = GenerateSmartContractSchema.safeParse(rawData)
 
@@ -518,27 +491,6 @@ export async function POST(req: NextRequest) {
       }))
 
       console.log("❌ [GPT-4o-mini] Erro de validação:", errors)
-      console.log("❌ [GPT-4o-mini] Tipos esperados:", {
-        "contrato.tipo": [
-          "servicos",
-          "trabalho",
-          "locacao",
-          "compra_venda",
-          "consultoria",
-          "prestacao_servicos",
-          "fornecimento",
-          "sociedade",
-          "parceria",
-          "franquia",
-          "licenciamento",
-          "manutencao",
-          "seguro",
-          "financiamento",
-          "outros",
-        ],
-        "contratante.tipo": ["pf", "pj"],
-        "contratada.tipo": ["pf", "pj"],
-      })
 
       return NextResponse.json(
         {
@@ -553,21 +505,32 @@ export async function POST(req: NextRequest) {
     const data = validationResult.data
     console.log("✅ [GPT-4o-mini] Dados validados, gerando contrato avançado...")
 
-    // ✅ GERAR CONTRATO E DECREMENTAR CRÉDITOS ATOMICAMENTE
+    // Gerar contrato
     const aiClauses = await generateAIContract(data)
 
-    // Decrementar créditos usando cliente administrativo
-    const { error: updateError } = await supabaseAdmin
-      .from("subscriptions")
-      .update({
-        creditos_avancados: subscription.creditos_avancados - 1,
-        updated_at: new Date().toISOString(),
+    // Decrementar créditos
+    if (supabaseServiceKey) {
+      const supabaseAdmin = createServerClient(supabaseUrl, supabaseServiceKey, {
+        cookies: {
+          get() {
+            return undefined
+          },
+          set() {},
+          remove() {},
+        },
       })
-      .eq("user_id", user.id)
 
-    if (updateError) {
-      console.error("❌ [GPT-4o-mini] Erro ao decrementar créditos:", updateError)
-      // Não falhar a operação por causa disso, apenas logar
+      const { error: updateError } = await supabaseAdmin
+        .from("subscriptions")
+        .update({
+          creditos_avancados: subscription.creditos_avancados - 1,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id)
+
+      if (updateError) {
+        console.error("❌ [GPT-4o-mini] Erro ao decrementar créditos:", updateError)
+      }
     }
 
     console.log(`🎯 [GPT-4o-mini] Contrato avançado gerado com sucesso!`)
@@ -583,7 +546,6 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("❌ [GPT-4o-mini] Erro:", error)
 
-    // Tratar erros específicos
     const errorMessage = error instanceof Error ? error.message : "Erro interno do servidor"
 
     if (errorMessage.includes("API Key da OpenAI")) {
@@ -597,7 +559,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (errorMessage.includes("banco de dados incompleta")) {
+    if (errorMessage.includes("SUPABASE_SERVICE_ROLE_KEY")) {
       return NextResponse.json(
         {
           success: false,

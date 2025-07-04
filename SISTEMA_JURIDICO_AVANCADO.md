@@ -15,7 +15,7 @@
 - ✅ **Artigos e incisos específicos incluídos**
 - ✅ **Máximo 6 leis ultra-relevantes**
 
-```typescript
+\`\`\`typescript
 // Exemplo de lei retornada:
 {
   "title": "Lei do Inquilinato - Lei 8.245/91 - Art. 3º - Locação Residencial",
@@ -28,7 +28,7 @@
     }
   ]
 }
-```
+\`\`\`
 
 ### **2. 🔄 AUTO-AJUSTE DE PAPÉIS CONTRATUAIS**
 
@@ -38,7 +38,7 @@
 - **Serviços:** Auto-detecta quem é CONTRATANTE vs PRESTADOR
 
 #### **Lógica Implementada:**
-```typescript
+\`\`\`typescript
 // Para locação: PJ geralmente é locador, PF é locatário
 if (contractType === 'locacao') {
   if (contratante.tipo === 'pf' && contratada.tipo === 'pj') {
@@ -47,7 +47,7 @@ if (contractType === 'locacao') {
     secondaryParty = contratante // LOCATÁRIO(A)
   }
 }
-```
+\`\`\`
 
 ### **3. 📋 MAPEAMENTO COMPLETO DE PAPÉIS**
 
@@ -69,7 +69,7 @@ if (contractType === 'locacao') {
 - ✅ "em conformidade com a CLT, Art. 7º, XIII"
 
 #### **Responsabilidades Específicas:**
-```markdown
+\`\`\`markdown
 **LOCADOR(A):**
 • Entregar o imóvel em condições de uso
 • Garantir o uso pacífico do imóvel  
@@ -79,18 +79,18 @@ if (contractType === 'locacao') {
 • Pagar o aluguel em dia
 • Conservar o imóvel
 • Devolver o imóvel nas mesmas condições
-```
+\`\`\`
 
 ### **5. 🎯 FILTROS ANTI-LEIS IRRELEVANTES**
 
 #### **Exclusões Críticas Implementadas:**
-```typescript
+\`\`\`typescript
 EXCLUSÕES CRÍTICAS:
 - Lei 10.713/2003 (prisão) → JAMAIS usar em contratos civis
 - Leis penais → JAMAIS usar em contratos civis/comerciais  
 - Leis tributárias → Só se especificamente sobre tributação contratual
 - Leis ambientais → Só se contrato ambiental específico
-```
+\`\`\`
 
 #### **Validação por Contexto:**
 - **Locação** → APENAS leis de locação/civil/consumidor
@@ -100,7 +100,7 @@ EXCLUSÕES CRÍTICAS:
 ## **🔧 FLUXO TÉCNICO ATUALIZADO**
 
 ### **1. Busca de Leis:**
-```
+\`\`\`
 Usuário digita: "contrato locação residencial"
 ↓
 OpenAI com filtros ultra-precisos
@@ -108,25 +108,25 @@ OpenAI com filtros ultra-precisos
 Retorna: Lei 8.245/91 com artigos específicos
 ↓
 JAMAIS retorna: Lei 10.713/2003 (prisão)
-```
+\`\`\`
 
 ### **2. Auto-Ajuste de Papéis:**
-```
+\`\`\`
 Input: Contratante (PF) + Contratada (PJ) + Tipo (locação)
 ↓
 Sistema detecta: PJ deve ser LOCADOR, PF deve ser LOCATÁRIO
 ↓
 Output: Papéis corrigidos automaticamente
-```
+\`\`\`
 
 ### **3. Geração do Contrato:**
-```
+\`\`\`
 Prompt da IA inclui:
 - Papéis corretos (LOCADOR vs LOCATÁRIO)
 - Leis específicas com artigos exatos
 - Responsabilidades de cada parte
 - Citações jurídicas precisas
-```
+\`\`\`
 
 ## **📊 RESULTADOS GARANTIDOS**
 
@@ -158,7 +158,7 @@ Prompt da IA inclui:
 - **LOCATÁRIO(A):** João Silva (PF)
 
 ### **Contrato Gerado:**
-```html
+\`\`\`html
 <div class="clause-title">CLÁUSULA 1ª - PARTES</div>
 <div class="clause-content">
   <p><strong>LOCADOR(A):</strong> Imobiliária XYZ LTDA, pessoa jurídica...</p>
@@ -171,7 +171,7 @@ Prompt da IA inclui:
   especificamente pelo Art. 3º que estabelece que "a locação residencial 
   é regida pelos arts. 1º a 27 desta lei"...</p>
 </div>
-```
+\`\`\`
 
 ## **🚀 SISTEMA 100% FUNCIONAL**
 
@@ -183,4 +183,4 @@ Prompt da IA inclui:
 4. **📝 Citações específicas** de artigos
 5. **🛡️ Proteção anti-leis irrelevantes**
 
-**Resultado:** Contratos **juridicamente seguros, precisos e profissionais** que o usuário pode confiar totalmente. 
+**Resultado:** Contratos **juridicamente seguros, precisos e profissionais** que o usuário pode confiar totalmente.

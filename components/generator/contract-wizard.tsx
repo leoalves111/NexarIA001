@@ -1,1253 +1,1220 @@
 "use client"
 
-import React, { useState, useCallback, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import type React from "react"
+
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Progress } from "@/components/ui/progress"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { CheckCircle, Building2, User, FileText, Eye, ArrowLeft, ArrowRight, Wand2, Check, X, Loader2, Sparkles, BookOpen, Save, Clock, Star } from "lucide-react"
-import { Separator } from "@/components/ui/separator"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { usePromptProfiles, PromptProfile } from "@/hooks/use-prompt-profiles"
-import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Brain, TrendingUp, Lightbulb, CheckCircle2 } from "lucide-react"
+import { Progress } from "@/components/ui/progress"
+import { useToast } from "@/hooks/use-toast"
+import { useSavedContracts } from "@/hooks/use-saved-contracts"
+import { supabaseUtils } from "@/lib/supabase"
+import {
+  FileText,
+  Users,
+  DollarSign,
+  Sparkles,
+  Download,
+  Save,
+  Eye,
+  Loader2,
+  AlertTriangle,
+  CheckCircle,
+  User,
+  Building,
+  Mail,
+  Phone,
+  MapPin,
+  CreditCard,
+  Clock,
+  Palette,
+  Wand2,
+  Zap,
+} from "lucide-react"
 
-// Interfaces para tipagem
+// Tipos de contrato disponíveis
+const CONTRACT_TYPES = [
+  { value: "servicos", label: "Prestação de Serviços", icon: "🔧" },
+  { value: "trabalho", label: "Contrato de Trabalho", icon: "👔" },
+  { value: "locacao", label: "Locação", icon: "🏠" },
+  { value: "compra_venda", label: "Compra e Venda", icon: "🛒" },
+  { value: "consultoria", label: "Consultoria", icon: "💼" },
+  { value: "prestacao_servicos", label: "Prestação de Serviços Técnicos", icon: "⚙️" },
+  { value: "fornecimento", label: "Fornecimento", icon: "📦" },
+  { value: "sociedade", label: "Sociedade", icon: "🤝" },
+  { value: "parceria", label: "Parceria", icon: "🤝" },
+  { value: "franquia", label: "Franquia", icon: "🏪" },
+  { value: "licenciamento", label: "Licenciamento", icon: "📄" },
+  { value: "manutencao", label: "Manutenção", icon: "🔧" },
+  { value: "seguro", label: "Seguro", icon: "🛡️" },
+  { value: "financiamento", label: "Financiamento", icon: "💰" },
+  { value: "outros", label: "Outros", icon: "📋" },
+]
+
+// Templates visuais disponíveis
+const VISUAL_TEMPLATES = [
+  { id: "professional", name: "Profissional", description: "Clássico e formal", color: "#1e40af" },
+  { id: "modern", name: "Moderno", description: "Design contemporâneo", color: "#0891b2" },
+  { id: "minimalist", name: "Minimalista", description: "Limpo e simples", color: "#374151" },
+  { id: "corporate", name: "Corporativo", description: "Elegante e sóbrio", color: "#1e293b" },
+  { id: "legal", name: "Jurídico", description: "Tradicional legal", color: "#92400e" },
+  { id: "creative", name: "Criativo", description: "Colorido e dinâmico", color: "#be185d" },
+  { id: "tech", name: "Tecnológico", description: "Estilo tech", color: "#0f172a" },
+  { id: "premium", name: "Premium", description: "Luxuoso e dourado", color: "#d97706" },
+  { id: "startup", name: "Startup", description: "Jovem e inovador", color: "#667eea" },
+  { id: "classic", name: "Clássico", description: "Vintage e elegante", color: "#a16207" },
+]
+
 interface PersonData {
-  tipo: 'pf' | 'pj'
+  tipo: "pf" | "pj"
   nome: string
   documento: string
   endereco: string
   cidade: string
   estado: string
-  cep: string
-  telefone: string
-  email: string
+  cep?: string
+  telefone?: string
+  email?: string
 }
 
 interface ContractData {
   titulo: string
-  tipo: 'servicos' | 'trabalho' | 'locacao' | 'compra_venda' | 'consultoria' | 'prestacao_servicos' | 'fornecimento' | 'sociedade' | 'parceria' | 'franquia' | 'licenciamento' | 'manutencao' | 'seguro' | 'financiamento' | 'outros'
-  tipoPersonalizado?: string // Para quando tipo for "outros"
-  prompt: string  // Mudado de "objeto" para "prompt"
+  tipo: string
+  tipoPersonalizado?: string
+  prompt: string
   valor: string
   prazo: string
-  observacoes: string
-  template: string // Template visual escolhido
+  observacoes?: string
+  template: string
 }
 
-interface WizardData {
+interface FormData {
   contratante: PersonData
   contratada: PersonData
   contrato: ContractData
 }
 
-interface Law {
-  id: string
-  title: string
-  description: string
-  category: string
-  relevance: string
-  articles?: Array<{
-    number: string
-    text: string
-    relevance: string
-  }>
-}
-
-interface ContractWizardProps {
-  onComplete: (data: WizardData) => void
-  generating: boolean
-  suggestedLaws: Law[]
-  selectedLaws: Law[]
-  loadingLaws: boolean
-  onSearchLaws: (observacoes: string) => void
-  onToggleLaw: (law: Law) => void
-  initialTemplate?: string
-  initialType?: string
-}
-
-const INITIAL_PERSON_DATA: PersonData = {
-  tipo: 'pj',
-  nome: '',
-  documento: '',
-  endereco: '',
-  cidade: '',
-  estado: '',
-  cep: '',
-  telefone: '',
-  email: ''
-}
-
-const INITIAL_CONTRACT_DATA: ContractData = {
-  titulo: '',
-  tipo: 'servicos',
-  tipoPersonalizado: '',
-  prompt: '',
-  valor: '',
-  prazo: '',
-  observacoes: '',
-  template: 'professional' // Template padrão
-}
-
-// Formatação de documentos (função externa para não recriar)
-const formatDocument = (value: string, type: 'pf' | 'pj'): string => {
-  const numbers = value.replace(/[^\d]/g, '')
-  if (type === 'pf' && numbers.length <= 11) {
-    return numbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
-  }
-  if (type === 'pj' && numbers.length <= 14) {
-    return numbers.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
-  }
-  return value
-}
-
-// Templates profissionais disponíveis
-const TEMPLATES = [
-  { 
-    id: 'professional', 
-    name: 'Profissional', 
-    description: 'Clássico e formal para negócios',
-    preview: '📄'
-  },
-  { 
-    id: 'modern', 
-    name: 'Moderno', 
-    description: 'Design contemporâneo e limpo',
-    preview: '🎯'
-  },
-  { 
-    id: 'minimalist', 
-    name: 'Minimalista', 
-    description: 'Simples e elegante',
-    preview: '⚪'
-  },
-  { 
-    id: 'corporate', 
-    name: 'Corporativo', 
-    description: 'Para grandes empresas',
-    preview: '🏢'
-  },
-  { 
-    id: 'legal', 
-    name: 'Jurídico', 
-    description: 'Foco em aspectos legais',
-    preview: '⚖️'
-  },
-  { 
-    id: 'creative', 
-    name: 'Criativo', 
-    description: 'Para setores criativos',
-    preview: '🎨'
-  },
-  { 
-    id: 'tech', 
-    name: 'Tecnológico', 
-    description: 'Para empresas de tecnologia',
-    preview: '💻'
-  },
-  { 
-    id: 'premium', 
-    name: 'Premium', 
-    description: 'Luxuoso e sofisticado',
-    preview: '👑'
-  },
-  { 
-    id: 'startup', 
-    name: 'Startup', 
-    description: 'Ágil e inovador',
-    preview: '🚀'
-  },
-  { 
-    id: 'classic', 
-    name: 'Clássico', 
-    description: 'Tradicional e confiável',
-    preview: '📜'
-  }
-]
-
 // Estados brasileiros
-const ESTADOS = [
-  { value: 'AC', label: 'AC - Acre' },
-  { value: 'AL', label: 'AL - Alagoas' },
-  { value: 'AP', label: 'AP - Amapá' },
-  { value: 'AM', label: 'AM - Amazonas' },
-  { value: 'BA', label: 'BA - Bahia' },
-  { value: 'CE', label: 'CE - Ceará' },
-  { value: 'DF', label: 'DF - Distrito Federal' },
-  { value: 'ES', label: 'ES - Espírito Santo' },
-  { value: 'GO', label: 'GO - Goiás' },
-  { value: 'MA', label: 'MA - Maranhão' },
-  { value: 'MT', label: 'MT - Mato Grosso' },
-  { value: 'MS', label: 'MS - Mato Grosso do Sul' },
-  { value: 'MG', label: 'MG - Minas Gerais' },
-  { value: 'PA', label: 'PA - Pará' },
-  { value: 'PB', label: 'PB - Paraíba' },
-  { value: 'PR', label: 'PR - Paraná' },
-  { value: 'PE', label: 'PE - Pernambuco' },
-  { value: 'PI', label: 'PI - Piauí' },
-  { value: 'RJ', label: 'RJ - Rio de Janeiro' },
-  { value: 'RN', label: 'RN - Rio Grande do Norte' },
-  { value: 'RS', label: 'RS - Rio Grande do Sul' },
-  { value: 'RO', label: 'RO - Rondônia' },
-  { value: 'RR', label: 'RR - Roraima' },
-  { value: 'SC', label: 'SC - Santa Catarina' },
-  { value: 'SP', label: 'SP - São Paulo' },
-  { value: 'SE', label: 'SE - Sergipe' },
-  { value: 'TO', label: 'TO - Tocantins' }
+const BRAZILIAN_STATES = [
+  "AC",
+  "AL",
+  "AP",
+  "AM",
+  "BA",
+  "CE",
+  "DF",
+  "ES",
+  "GO",
+  "MA",
+  "MT",
+  "MS",
+  "MG",
+  "PA",
+  "PB",
+  "PR",
+  "PE",
+  "PI",
+  "RJ",
+  "RN",
+  "RS",
+  "RO",
+  "RR",
+  "SC",
+  "SP",
+  "SE",
+  "TO",
 ]
 
-// Componente para sugestões de IA
-interface AISuggestionProps {
-  originalText: string
-  onApply: (suggestion: string) => void
-  placeholder: string
-}
+export default function ContractWizard() {
+  const { toast } = useToast()
+  const { saveContract } = useSavedContracts()
 
-const AISuggestion = ({ originalText, onApply, placeholder }: AISuggestionProps) => {
-  const [suggestion, setSuggestion] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [showSuggestion, setShowSuggestion] = useState(false)
+  // Estados do formulário
+  const [currentStep, setCurrentStep] = useState(1)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generatedContract, setGeneratedContract] = useState<string | null>(null)
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
+  const [user, setUser] = useState<any>(null)
+  const [isLoadingUser, setIsLoadingUser] = useState(true)
 
-  const generateSuggestion = async () => {
-    if (!originalText.trim() || originalText.length < 10) return
-    
-    setLoading(true)
-    try {
-      const response = await fetch('/api/ai-suggestion', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: originalText,
-          type: placeholder.includes('PROMPT') ? 'prompt' : 'observacoes'
-        })
+  // Dados do formulário
+  const [formData, setFormData] = useState<FormData>({
+    contratante: {
+      tipo: "pf",
+      nome: "",
+      documento: "",
+      endereco: "",
+      cidade: "",
+      estado: "",
+      cep: "",
+      telefone: "",
+      email: "",
+    },
+    contratada: {
+      tipo: "pf",
+      nome: "",
+      documento: "",
+      endereco: "",
+      cidade: "",
+      estado: "",
+      cep: "",
+      telefone: "",
+      email: "",
+    },
+    contrato: {
+      titulo: "",
+      tipo: "",
+      tipoPersonalizado: "",
+      prompt: "",
+      valor: "",
+      prazo: "",
+      observacoes: "",
+      template: "professional",
+    },
+  })
+
+  // ✅ CORREÇÃO: Verificar autenticação na inicialização
+  useEffect(() => {
+    const checkAuth = async () => {
+      setIsLoadingUser(true)
+      try {
+        const { user: currentUser, error } = await supabaseUtils.getCurrentUser()
+
+        if (currentUser && !error) {
+          setUser(currentUser)
+          console.log("✅ [Wizard] Usuário autenticado:", currentUser.email)
+        } else {
+          console.log("❌ [Wizard] Usuário não autenticado")
+          setUser(null)
+        }
+      } catch (error) {
+        console.error("❌ [Wizard] Erro ao verificar autenticação:", error)
+        setUser(null)
+      } finally {
+        setIsLoadingUser(false)
+      }
+    }
+
+    checkAuth()
+  }, [])
+
+  // Validação de CPF
+  const validateCPF = (cpf: string): boolean => {
+    const cleaned = cpf.replace(/[^\d]/g, "")
+    if (cleaned.length !== 11 || cleaned.match(/^(\d)\1{10}$/)) return false
+
+    let sum = 0
+    for (let i = 0; i < 9; i++) {
+      sum += Number.parseInt(cleaned.charAt(i)) * (10 - i)
+    }
+    let remainder = (sum * 10) % 11
+    if (remainder === 10 || remainder === 11) remainder = 0
+    if (remainder !== Number.parseInt(cleaned.charAt(9))) return false
+
+    sum = 0
+    for (let i = 0; i < 10; i++) {
+      sum += Number.parseInt(cleaned.charAt(i)) * (11 - i)
+    }
+    remainder = (sum * 10) % 11
+    if (remainder === 10 || remainder === 11) remainder = 0
+    return remainder === Number.parseInt(cleaned.charAt(10))
+  }
+
+  // Validação de CNPJ
+  const validateCNPJ = (cnpj: string): boolean => {
+    const cleaned = cnpj.replace(/[^\d]/g, "")
+    if (cleaned.length !== 14 || cleaned.match(/^(\d)\1{13}$/)) return false
+
+    let length = cleaned.length - 2
+    let numbers = cleaned.substring(0, length)
+    const digits = cleaned.substring(length)
+    let sum = 0
+    let pos = length - 7
+
+    for (let i = length; i >= 1; i--) {
+      sum += Number.parseInt(numbers.charAt(length - i)) * pos--
+      if (pos < 2) pos = 9
+    }
+
+    let result = sum % 11 < 2 ? 0 : 11 - (sum % 11)
+    if (result !== Number.parseInt(digits.charAt(0))) return false
+
+    length = length + 1
+    numbers = cleaned.substring(0, length)
+    sum = 0
+    pos = length - 7
+    for (let i = length; i >= 1; i--) {
+      sum += Number.parseInt(numbers.charAt(length - i)) * pos--
+      if (pos < 2) pos = 9
+    }
+    result = sum % 11 < 2 ? 0 : 11 - (sum % 11)
+    return result === Number.parseInt(digits.charAt(1))
+  }
+
+  // Validação de email
+  const validateEmail = (email: string): boolean => {
+    if (!email) return true // Email é opcional
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(email)
+  }
+
+  // Função para validar um passo
+  const validateStep = (step: number): boolean => {
+    const errors: Record<string, string> = {}
+
+    if (step === 1) {
+      // Validar contratante
+      if (!formData.contratante.nome.trim()) {
+        errors["contratante.nome"] = "Nome é obrigatório"
+      }
+      if (!formData.contratante.documento.trim()) {
+        errors["contratante.documento"] = "Documento é obrigatório"
+      } else if (formData.contratante.tipo === "pf" && !validateCPF(formData.contratante.documento)) {
+        errors["contratante.documento"] = "CPF inválido"
+      } else if (formData.contratante.tipo === "pj" && !validateCNPJ(formData.contratante.documento)) {
+        errors["contratante.documento"] = "CNPJ inválido"
+      }
+      if (!formData.contratante.endereco.trim()) {
+        errors["contratante.endereco"] = "Endereço é obrigatório"
+      }
+      if (!formData.contratante.cidade.trim()) {
+        errors["contratante.cidade"] = "Cidade é obrigatória"
+      }
+      if (!formData.contratante.estado) {
+        errors["contratante.estado"] = "Estado é obrigatório"
+      }
+      if (formData.contratante.email && !validateEmail(formData.contratante.email)) {
+        errors["contratante.email"] = "Email inválido"
+      }
+    }
+
+    if (step === 2) {
+      // Validar contratada
+      if (!formData.contratada.nome.trim()) {
+        errors["contratada.nome"] = "Nome é obrigatório"
+      }
+      if (!formData.contratada.documento.trim()) {
+        errors["contratada.documento"] = "Documento é obrigatório"
+      } else if (formData.contratada.tipo === "pf" && !validateCPF(formData.contratada.documento)) {
+        errors["contratada.documento"] = "CPF inválido"
+      } else if (formData.contratada.tipo === "pj" && !validateCNPJ(formData.contratada.documento)) {
+        errors["contratada.documento"] = "CNPJ inválido"
+      }
+      if (!formData.contratada.endereco.trim()) {
+        errors["contratada.endereco"] = "Endereço é obrigatório"
+      }
+      if (!formData.contratada.cidade.trim()) {
+        errors["contratada.cidade"] = "Cidade é obrigatória"
+      }
+      if (!formData.contratada.estado) {
+        errors["contratada.estado"] = "Estado é obrigatório"
+      }
+      if (formData.contratada.email && !validateEmail(formData.contratada.email)) {
+        errors["contratada.email"] = "Email inválido"
+      }
+    }
+
+    if (step === 3) {
+      // Validar contrato
+      if (!formData.contrato.titulo.trim()) {
+        errors["contrato.titulo"] = "Título é obrigatório"
+      }
+      if (!formData.contrato.tipo) {
+        errors["contrato.tipo"] = "Tipo de contrato é obrigatório"
+      }
+      if (formData.contrato.tipo === "outros" && !formData.contrato.tipoPersonalizado?.trim()) {
+        errors["contrato.tipoPersonalizado"] = "Especifique o tipo personalizado"
+      }
+      if (!formData.contrato.prompt.trim()) {
+        errors["contrato.prompt"] = "Descrição do objeto é obrigatória"
+      } else if (formData.contrato.prompt.length < 20) {
+        errors["contrato.prompt"] = "Descrição deve ter pelo menos 20 caracteres"
+      }
+      if (!formData.contrato.valor.trim()) {
+        errors["contrato.valor"] = "Valor é obrigatório"
+      }
+      if (!formData.contrato.prazo.trim()) {
+        errors["contrato.prazo"] = "Prazo é obrigatório"
+      }
+    }
+
+    setValidationErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  // Função para avançar para o próximo passo
+  const nextStep = () => {
+    if (validateStep(currentStep)) {
+      setCurrentStep((prev) => Math.min(prev + 1, 4))
+    } else {
+      toast({
+        title: "❌ Campos obrigatórios",
+        description: "Preencha todos os campos obrigatórios antes de continuar",
+        variant: "destructive",
       })
-      
-      if (response.ok) {
-        const result = await response.json()
-        setSuggestion(result.suggestion)
-        setShowSuggestion(true)
+    }
+  }
+
+  // Função para voltar ao passo anterior
+  const prevStep = () => {
+    setCurrentStep((prev) => Math.max(prev - 1, 1))
+  }
+
+  // Função para atualizar dados do formulário
+  const updateFormData = (section: keyof FormData, field: string, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [field]: value,
+      },
+    }))
+
+    // Limpar erro do campo quando ele for preenchido
+    const errorKey = `${section}.${field}`
+    if (validationErrors[errorKey]) {
+      setValidationErrors((prev) => {
+        const newErrors = { ...prev }
+        delete newErrors[errorKey]
+        return newErrors
+      })
+    }
+  }
+
+  // ✅ CORREÇÃO: Função melhorada para gerar contrato
+  const generateContract = async () => {
+    if (!validateStep(3)) {
+      toast({
+        title: "❌ Dados incompletos",
+        description: "Verifique todos os campos obrigatórios",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsGenerating(true)
+
+    try {
+      console.log("🚀 [Wizard] Iniciando geração do contrato...")
+
+      const response = await fetch("/api/generate-contract-v2", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        console.error("❌ [Wizard] Erro na API:", data)
+        throw new Error(data.message || data.error || "Erro ao gerar contrato")
+      }
+
+      console.log("✅ [Wizard] Contrato gerado com sucesso!")
+
+      setGeneratedContract(data.contract)
+      setCurrentStep(4)
+
+      // ✅ CORREÇÃO: Salvar automaticamente no Supabase/localStorage
+      try {
+        console.log("💾 [Wizard] Salvando contrato automaticamente...")
+
+        const contractToSave = {
+          titulo: formData.contrato.titulo,
+          nomepersonalizado: formData.contrato.titulo,
+          tipo: formData.contrato.tipo,
+          tipopersonalizado: formData.contrato.tipoPersonalizado,
+          tamanho: "médio",
+          html: data.contract,
+          contratante: formData.contratante,
+          contratada: formData.contratada,
+          valor: formData.contrato.valor,
+          prazo: formData.contrato.prazo,
+          leisselecionadas: [],
+        }
+
+        const savedId = await saveContract(contractToSave)
+
+        if (savedId) {
+          console.log("✅ [Wizard] Contrato salvo com ID:", savedId)
+          toast({
+            title: "✅ Contrato gerado e salvo!",
+            description: "Contrato disponível na seção Exportações",
+          })
+        } else {
+          console.warn("⚠️ [Wizard] Contrato gerado mas não foi salvo")
+          toast({
+            title: "✅ Contrato gerado!",
+            description: "⚠️ Não foi possível salvar automaticamente",
+          })
+        }
+      } catch (saveError) {
+        console.error("❌ [Wizard] Erro ao salvar contrato:", saveError)
+        toast({
+          title: "✅ Contrato gerado!",
+          description: "⚠️ Erro ao salvar - use o botão Salvar",
+        })
       }
     } catch (error) {
-      console.error('Erro ao gerar sugestão:', error)
+      console.error("❌ [Wizard] Erro ao gerar contrato:", error)
+      toast({
+        title: "❌ Erro ao gerar contrato",
+        description: error instanceof Error ? error.message : "Tente novamente em alguns instantes",
+        variant: "destructive",
+      })
     } finally {
-      setLoading(false)
+      setIsGenerating(false)
     }
   }
 
-  const handleApply = () => {
-    onApply(suggestion)
-    setShowSuggestion(false)
-    setSuggestion('')
-  }
-
-  const handleReject = () => {
-    setShowSuggestion(false)
-    setSuggestion('')
-  }
-
-  // Trigger suggestion when text changes
-  useEffect(() => {
-    if (originalText.length > 20 && !loading) {
-      const timer = setTimeout(() => {
-        generateSuggestion()
-      }, 2000) // Wait 2 seconds after typing stops
-      
-      return () => clearTimeout(timer)
-    }
-  }, [originalText])
-
-  if (!showSuggestion && !loading) return null
-
-  return (
-    <Card className="mt-3 border-blue-200 bg-blue-50">
-      <CardContent className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="flex-shrink-0">
-            {loading ? (
-              <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
-            ) : (
-              <Sparkles className="h-5 w-5 text-blue-600" />
-            )}
-          </div>
-          
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-sm font-medium text-blue-800">
-                {loading ? 'IA gerando sugestão...' : 'Sugestão da IA'}
-              </span>
-              <Badge variant="outline" className="text-xs bg-blue-100 text-blue-700">
-                GPT-4o-mini
-              </Badge>
-            </div>
-            
-            {loading ? (
-              <div className="text-sm text-blue-700">
-                Analisando seu texto e criando uma versão profissional...
-              </div>
-            ) : (
-              <>
-                <div className="text-sm text-gray-700 bg-white p-3 rounded border mb-3">
-                  {suggestion}
-                </div>
-                
-                <div className="flex gap-2">
-                  <Button 
-                    size="sm" 
-                    onClick={handleApply}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Check className="h-4 w-4 mr-1" />
-                    Aplicar Sugestão
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={handleReject}
-                  >
-                    <X className="h-4 w-4 mr-1" />
-                    Manter Original
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-// Componente PersonForm (externo para evitar re-criação)
-interface PersonFormProps {
-  personData: PersonData
-  title: string
-  updatePersonData: (field: keyof PersonData, value: string) => void
-}
-
-const PersonForm = ({ personData, title, updatePersonData }: PersonFormProps) => {
-  return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
-        <p className="text-gray-600">Informe os dados da parte</p>
-      </div>
-
-      {/* Tipo de Pessoa */}
-      <div>
-        <Label className="text-sm font-medium">Tipo de Pessoa</Label>
-        <Select 
-          value={personData.tipo} 
-          onValueChange={(value: 'pf' | 'pj') => {
-            updatePersonData('tipo', value)
-            updatePersonData('documento', '') // Limpa documento ao trocar tipo
-          }}
-        >
-          <SelectTrigger className="mt-2">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="pf">👤 Pessoa Física</SelectItem>
-            <SelectItem value="pj">🏢 Pessoa Jurídica</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Nome/Razão Social */}
-      <div>
-        <Label className="text-sm font-medium">
-          {personData.tipo === 'pf' ? 'Nome Completo' : 'Razão Social'}
-        </Label>
-        <Input
-          value={personData.nome}
-          onChange={(e) => updatePersonData('nome', e.target.value)}
-          placeholder={personData.tipo === 'pf' ? 'João da Silva Santos' : 'Empresa de Tecnologia LTDA'}
-          className="mt-2"
-        />
-      </div>
-
-      {/* Documento */}
-      <div>
-        <Label className="text-sm font-medium">
-          {personData.tipo === 'pf' ? 'CPF' : 'CNPJ'}
-        </Label>
-        <Input
-          value={personData.documento}
-          onChange={(e) => updatePersonData('documento', e.target.value)}
-          placeholder={personData.tipo === 'pf' ? '000.000.000-00' : '00.000.000/0000-00'}
-          className="mt-2"
-        />
-      </div>
-
-      {/* Endereço */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="md:col-span-2">
-          <Label className="text-sm font-medium">Endereço Completo</Label>
-          <Input
-            value={personData.endereco}
-            onChange={(e) => updatePersonData('endereco', e.target.value)}
-            placeholder="Rua das Flores, 123, Centro"
-            className="mt-2"
-          />
-        </div>
-        
-        <div>
-          <Label className="text-sm font-medium">Cidade</Label>
-          <Input
-            value={personData.cidade}
-            onChange={(e) => updatePersonData('cidade', e.target.value)}
-            placeholder="São Paulo"
-            className="mt-2"
-          />
-        </div>
-        
-        <div>
-          <Label className="text-sm font-medium">Estado</Label>
-          <Select value={personData.estado} onValueChange={(value) => updatePersonData('estado', value)}>
-            <SelectTrigger className="mt-2">
-              <SelectValue placeholder="Selecione o estado" />
-            </SelectTrigger>
-            <SelectContent>
-              {ESTADOS.map((estado) => (
-                <SelectItem key={estado.value} value={estado.value}>
-                  {estado.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          
-
-        </div>
-      </div>
-
-      {/* Contatos Opcionais */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label className="text-sm font-medium">CEP (opcional)</Label>
-          <Input
-            value={personData.cep}
-            onChange={(e) => updatePersonData('cep', e.target.value)}
-            placeholder="00000-000"
-            className="mt-2"
-          />
-        </div>
-        
-        <div>
-          <Label className="text-sm font-medium">Telefone (opcional)</Label>
-          <Input
-            value={personData.telefone}
-            onChange={(e) => updatePersonData('telefone', e.target.value)}
-            placeholder="(11) 99999-9999"
-            className="mt-2"
-          />
-        </div>
-      </div>
-
-      <div>
-        <Label className="text-sm font-medium">E-mail (opcional)</Label>
-        <Input
-          type="email"
-          value={personData.email}
-          onChange={(e) => updatePersonData('email', e.target.value)}
-          placeholder="contato@empresa.com"
-          className="mt-2"
-        />
-      </div>
-    </div>
-  )
-}
-
-// Componente ContractForm (externo para evitar re-criação)
-interface ContractFormProps {
-  contractData: ContractData
-  updateContractData: (field: keyof ContractData, value: string) => void
-  suggestedLaws: Law[]
-  selectedLaws: Law[]
-  loadingLaws: boolean
-  onSearchLaws: (observacoes: string) => void
-  onToggleLaw: (law: Law) => void
-}
-
-const ContractForm = ({ 
-  contractData, 
-  updateContractData, 
-  suggestedLaws, 
-  selectedLaws, 
-  loadingLaws, 
-  onSearchLaws, 
-  onToggleLaw 
-}: ContractFormProps) => {
-  const { toast } = useToast()
-  const { profiles, getPopularProfiles, saveProfile, useProfile } = usePromptProfiles()
-  const [showProfileDialog, setShowProfileDialog] = useState(false)
-  const [profileName, setProfileName] = useState('')
-  const [profileTags, setProfileTags] = useState('')
-
-  // Função para buscar leis
-  const handleSearchLawsProtected = () => {
-    onSearchLaws(contractData.observacoes)
-  }
-
-  // Função para salvar perfil de prompt
-  const handleSaveProfile = useCallback(() => {
-
-    if (!profileName.trim()) {
-      toast({
-        title: "Nome obrigatório",
-        description: "Digite um nome para o perfil",
-        variant: "destructive"
-      })
-      return
-    }
-
-    if (!contractData.prompt.trim()) {
-      toast({
-        title: "Prompt obrigatório", 
-        description: "Digite um prompt antes de salvar o perfil",
-        variant: "destructive"
-      })
-      return
-    }
+  // Função para salvar contrato manualmente
+  const handleSaveContract = async () => {
+    if (!generatedContract) return
 
     try {
-      const tags = profileTags.split(',').map(tag => tag.trim()).filter(tag => tag)
-      
-      saveProfile({
-        nome: profileName,
-        prompt: contractData.prompt,
-        tipo: contractData.tipo,
-        tipoPersonalizado: contractData.tipoPersonalizado,
-        observacoes: contractData.observacoes,
-        tags
-      })
+      const contractToSave = {
+        titulo: formData.contrato.titulo,
+        nomepersonalizado: formData.contrato.titulo,
+        tipo: formData.contrato.tipo,
+        tipopersonalizado: formData.contrato.tipoPersonalizado,
+        tamanho: "médio",
+        html: generatedContract,
+        contratante: formData.contratante,
+        contratada: formData.contratada,
+        valor: formData.contrato.valor,
+        prazo: formData.contrato.prazo,
+        leisselecionadas: [],
+      }
 
-      toast({
-        title: "✅ Perfil salvo!",
-        description: `Perfil "${profileName}" salvo com sucesso`
-      })
+      const savedId = await saveContract(contractToSave)
 
-      setShowProfileDialog(false)
-      setProfileName('')
-      setProfileTags('')
+      if (savedId) {
+        toast({
+          title: "✅ Contrato salvo!",
+          description: "Contrato salvo com sucesso",
+        })
+      }
     } catch (error) {
+      console.error("Erro ao salvar contrato:", error)
       toast({
         title: "❌ Erro ao salvar",
-        description: "Não foi possível salvar o perfil",
-        variant: "destructive"
+        description: "Não foi possível salvar o contrato",
+        variant: "destructive",
       })
     }
-  }, [profileName, profileTags, contractData, saveProfile, toast])
+  }
 
-  // Função para carregar perfil
-  const handleLoadProfile = useCallback((profile: any) => {
-    updateContractData('prompt', profile.prompt)
-    updateContractData('tipo', profile.tipo)
-    if (profile.tipoPersonalizado) {
-      updateContractData('tipoPersonalizado', profile.tipoPersonalizado)
-    }
-    updateContractData('observacoes', profile.observacoes)
+  // Função para baixar contrato
+  const handleDownloadContract = () => {
+    if (!generatedContract) return
 
-    // Incrementar uso do perfil (removido hook para evitar erro)
-    // useProfile(profile.id) - TODO: implementar método alternativo
+    const blob = new Blob([generatedContract], { type: "text/html" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${formData.contrato.titulo.replace(/[^a-zA-Z0-9]/g, "_")}.html`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
 
     toast({
-      title: "📚 Perfil carregado!",
-      description: `Perfil "${profile.nome}" aplicado com sucesso`
+      title: "📥 Download iniciado",
+      description: "Contrato baixado com sucesso",
     })
-  }, [updateContractData, toast])
+  }
 
-  return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900">Dados do Contrato</h2>
-        <p className="text-gray-600">Defina os detalhes e condições do contrato</p>
-      </div>
+  // Função para visualizar contrato
+  const handlePreviewContract = () => {
+    if (!generatedContract) return
 
-      {/* Seletor de Template */}
-      <div>
-        <Label className="text-sm font-medium">Template do Contrato</Label>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-2">
-          {TEMPLATES.map((template) => (
-            <Card 
-              key={template.id}
-              className={`cursor-pointer transition-all hover:shadow-md ${
-                contractData.template === template.id 
-                  ? 'ring-2 ring-blue-500 bg-blue-50' 
-                  : 'hover:bg-gray-50'
-              }`}
-              onClick={() => updateContractData('template', template.id)}
-            >
-              <CardContent className="p-3 text-center">
-                <div className="text-2xl mb-1">{template.preview}</div>
-                <div className="text-xs font-medium">{template.name}</div>
-                <div className="text-xs text-gray-500 mt-1">{template.description}</div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
+    const newWindow = window.open("", "_blank")
+    if (newWindow) {
+      newWindow.document.write(generatedContract)
+      newWindow.document.close()
+    }
+  }
 
-      {/* Título do Contrato */}
-      <div>
-        <Label className="text-sm font-medium">Título do Contrato</Label>
+  // Função para resetar formulário
+  const resetForm = () => {
+    setCurrentStep(1)
+    setGeneratedContract(null)
+    setValidationErrors({})
+    setFormData({
+      contratante: {
+        tipo: "pf",
+        nome: "",
+        documento: "",
+        endereco: "",
+        cidade: "",
+        estado: "",
+        cep: "",
+        telefone: "",
+        email: "",
+      },
+      contratada: {
+        tipo: "pf",
+        nome: "",
+        documento: "",
+        endereco: "",
+        cidade: "",
+        estado: "",
+        cep: "",
+        telefone: "",
+        email: "",
+      },
+      contrato: {
+        titulo: "",
+        tipo: "",
+        tipoPersonalizado: "",
+        prompt: "",
+        valor: "",
+        prazo: "",
+        observacoes: "",
+        template: "professional",
+      },
+    })
+  }
+
+  // Renderizar campo de entrada com validação
+  const renderInputField = (
+    section: keyof FormData,
+    field: string,
+    label: string,
+    type = "text",
+    placeholder?: string,
+    required = true,
+    icon?: React.ReactNode,
+  ) => {
+    const value = (formData[section] as any)[field] || ""
+    const errorKey = `${section}.${field}`
+    const hasError = !!validationErrors[errorKey]
+
+    return (
+      <div className="space-y-2">
+        <Label htmlFor={`${section}-${field}`} className="flex items-center gap-2">
+          {icon}
+          {label}
+          {required && <span className="text-red-500">*</span>}
+        </Label>
         <Input
-          value={contractData.titulo}
-          onChange={(e) => updateContractData('titulo', e.target.value)}
-          placeholder="Contrato de Prestação de Serviços de Marketing Digital"
-          className="mt-2"
+          id={`${section}-${field}`}
+          type={type}
+          value={value}
+          onChange={(e) => updateFormData(section, field, e.target.value)}
+          placeholder={placeholder}
+          className={hasError ? "border-red-500" : ""}
         />
+        {hasError && (
+          <p className="text-sm text-red-500 flex items-center gap-1">
+            <AlertTriangle className="h-4 w-4" />
+            {validationErrors[errorKey]}
+          </p>
+        )}
       </div>
+    )
+  }
 
-      {/* Tipo de Contrato */}
-      <div>
-        <Label className="text-sm font-medium">Tipo de Contrato</Label>
-        <Select value={contractData.tipo} onValueChange={(value: any) => updateContractData('tipo', value)}>
-          <SelectTrigger className="mt-2">
-            <SelectValue />
+  // Renderizar seletor com validação
+  const renderSelectField = (
+    section: keyof FormData,
+    field: string,
+    label: string,
+    options: { value: string; label: string }[],
+    placeholder?: string,
+    required = true,
+    icon?: React.ReactNode,
+  ) => {
+    const value = (formData[section] as any)[field] || ""
+    const errorKey = `${section}.${field}`
+    const hasError = !!validationErrors[errorKey]
+
+    return (
+      <div className="space-y-2">
+        <Label className="flex items-center gap-2">
+          {icon}
+          {label}
+          {required && <span className="text-red-500">*</span>}
+        </Label>
+        <Select value={value} onValueChange={(value) => updateFormData(section, field, value)}>
+          <SelectTrigger className={hasError ? "border-red-500" : ""}>
+            <SelectValue placeholder={placeholder} />
           </SelectTrigger>
           <SelectContent>
-                            <SelectItem value="servicos">🔧 Prestação de Serviços</SelectItem>
-                <SelectItem value="trabalho">👨‍💼 Contrato de Trabalho</SelectItem>
-                <SelectItem value="locacao">🏠 Locação de Imóvel</SelectItem>
-                <SelectItem value="compra_venda">🛒 Compra e Venda</SelectItem>
-                <SelectItem value="consultoria">💼 Consultoria</SelectItem>
-                <SelectItem value="prestacao_servicos">⚙️ Prestação de Serviços Técnicos</SelectItem>
-                <SelectItem value="fornecimento">📦 Fornecimento de Produtos</SelectItem>
-                <SelectItem value="sociedade">🤝 Contrato de Sociedade</SelectItem>
-                <SelectItem value="parceria">🔗 Parceria Comercial</SelectItem>
-                <SelectItem value="franquia">🏪 Franquia</SelectItem>
-                <SelectItem value="licenciamento">📋 Licenciamento</SelectItem>
-                <SelectItem value="manutencao">🔧 Manutenção</SelectItem>
-                <SelectItem value="seguro">🛡️ Seguro</SelectItem>
-                <SelectItem value="financiamento">💰 Financiamento</SelectItem>
-                <SelectItem value="outros">🆕 Outros (Personalize)</SelectItem>
-            
-                        </SelectContent>
+            {options.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
+        {hasError && (
+          <p className="text-sm text-red-500 flex items-center gap-1">
+            <AlertTriangle className="h-4 w-4" />
+            {validationErrors[errorKey]}
+          </p>
+        )}
       </div>
+    )
+  }
 
-      {/* Campo para tipo personalizado */}
-      {contractData.tipo === 'outros' && (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <Label className="text-sm font-medium text-blue-800">
-            Especifique o Tipo de Contrato
-          </Label>
-          <Input
-            placeholder="Ex: Contrato de Distribuição, Acordo de Não Divulgação, Contrato de Representação Comercial, etc."
-            value={contractData.tipoPersonalizado || ''}
-            onChange={(e) => updateContractData('tipoPersonalizado', e.target.value)}
-            className="mt-2"
-          />
-          <div className="text-xs text-blue-600 mt-2">
-            💡 A IA criará um contrato personalizado baseado no tipo especificado
+  // Renderizar textarea com validação
+  const renderTextareaField = (
+    section: keyof FormData,
+    field: string,
+    label: string,
+    placeholder?: string,
+    required = true,
+    rows = 4,
+    icon?: React.ReactNode,
+  ) => {
+    const value = (formData[section] as any)[field] || ""
+    const errorKey = `${section}.${field}`
+    const hasError = !!validationErrors[errorKey]
+
+    return (
+      <div className="space-y-2">
+        <Label className="flex items-center gap-2">
+          {icon}
+          {label}
+          {required && <span className="text-red-500">*</span>}
+        </Label>
+        <Textarea
+          value={value}
+          onChange={(e) => updateFormData(section, field, e.target.value)}
+          placeholder={placeholder}
+          rows={rows}
+          className={hasError ? "border-red-500" : ""}
+        />
+        {hasError && (
+          <p className="text-sm text-red-500 flex items-center gap-1">
+            <AlertTriangle className="h-4 w-4" />
+            {validationErrors[errorKey]}
+          </p>
+        )}
+        {field === "prompt" && <p className="text-sm text-gray-500">{value.length}/3000 caracteres (mínimo 20)</p>}
+      </div>
+    )
+  }
+
+  if (isLoadingUser) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto" />
+          <p className="text-muted-foreground">Verificando autenticação...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="text-center space-y-4">
+        <div className="flex items-center justify-center gap-2">
+          <Wand2 className="h-8 w-8 text-primary" />
+          <h1 className="text-3xl font-bold">Gerador de Contratos IA</h1>
+        </div>
+        <p className="text-muted-foreground">Crie contratos profissionais em minutos com inteligência artificial</p>
+
+        {/* Progress Bar */}
+        <div className="max-w-md mx-auto">
+          <Progress value={(currentStep / 4) * 100} className="h-2" />
+          <div className="flex justify-between text-sm text-muted-foreground mt-2">
+            <span>Passo {currentStep} de 4</span>
+            <span>{Math.round((currentStep / 4) * 100)}% completo</span>
           </div>
         </div>
+      </div>
+
+      {/* Status do usuário */}
+      {!user && (
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            ⚠️ Você não está logado. Os contratos serão salvos apenas localmente.
+            <strong> Faça login para sincronizar com a nuvem.</strong>
+          </AlertDescription>
+        </Alert>
       )}
 
-      {/* PROMPT - Descreva o Contrato */}
-      <div>
-        <Label className="text-sm font-medium flex items-center gap-2">
-          PROMPT - Descreva o Contrato
-          {contractData.tipo === 'outros' && contractData.tipoPersonalizado && (
-            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">
-              Tipo: {contractData.tipoPersonalizado}
-            </span>
-          )}
-          <Badge variant="outline" className="text-xs bg-green-100 text-green-700">
-            <Sparkles className="h-3 w-3 mr-1" />
-            IA Real
-          </Badge>
-        </Label>
-        
-        {/* Perfis de Prompt */}
-        <div className="flex gap-2 ml-auto">
-          <Dialog open={showProfileDialog} onOpenChange={setShowProfileDialog}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="text-xs">
-                <Save className="h-3 w-3 mr-1" />
-                Salvar Perfil
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Salvar Perfil de Prompt</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label>Nome do Perfil</Label>
-                  <Input
-                    placeholder="Ex: Contrato CLT Padrão"
-                    value={profileName}
-                    onChange={(e) => setProfileName(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label>Tags (separadas por vírgula)</Label>
-                  <Input
-                    placeholder="Ex: trabalho, clt, desenvolvedor"
-                    value={profileTags}
-                    onChange={(e) => setProfileTags(e.target.value)}
-                  />
-                </div>
-                <Button onClick={handleSaveProfile} className="w-full">
-                  <Save className="h-4 w-4 mr-2" />
-                  Salvar Perfil
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          {getPopularProfiles(3).length > 0 && (
-            <Select onValueChange={(profileId) => {
-              const profile = profiles.find(p => p.id === profileId)
-              if (profile) handleLoadProfile(profile)
-            }}>
-              <SelectTrigger className="w-40 text-xs">
-                <div className="flex items-center gap-1">
-                  <BookOpen className="h-3 w-3" />
-                  <SelectValue placeholder="Perfis Salvos" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {getPopularProfiles(10).map((profile) => (
-                  <SelectItem key={profile.id} value={profile.id}>
-                    <div className="flex items-center gap-2">
-                      <span className="truncate max-w-32">{profile.nome}</span>
-                      <div className="flex items-center gap-1 text-xs text-gray-500">
-                        <Clock className="h-3 w-3" />
-                        {profile.usageCount}
-                      </div>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
-        
-        <Textarea
-          value={contractData.prompt}
-          onChange={(e) => updateContractData('prompt', e.target.value)}
-          placeholder="Exemplo: 'Contrato de trabalho para desenvolvedor frontend, salário R$ 5.000, carga horária 40h/semana, benefícios incluem plano de saúde e vale alimentação'. 
-
-💡 Dicas de Tamanho:
-• 'contrato resumido' ou 'básico' = 1 página, cláusulas essenciais
-• 'contrato completo' ou 'detalhado' = até 2 páginas, todas as cláusulas"
-          className="mt-2 min-h-[120px]"
-        />
-        <div className="text-xs text-gray-500 mt-1">
-          💡 Seja específico! A IA criará todas as cláusulas baseadas neste prompt.
-        </div>
-      </div>
-
-      {/* Valor e Prazo */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label className="text-sm font-medium">Valor Total</Label>
-          <Input
-            value={contractData.valor}
-            onChange={(e) => updateContractData('valor', e.target.value)}
-            placeholder="R$ 15.000,00"
-            className="mt-2"
-          />
-        </div>
-        
-        <div>
-          <Label className="text-sm font-medium">Prazo de Execução</Label>
-          <Input
-            value={contractData.prazo}
-            onChange={(e) => updateContractData('prazo', e.target.value)}
-            placeholder="90 dias corridos"
-            className="mt-2"
-          />
-        </div>
-      </div>
-
-              {/* Sistema de Seleção de Leis */}
-        <div className="space-y-4">
-          <div>
-            <Label className="text-sm font-medium flex items-center gap-2">
-              Resalte alguma Lei ou Cláusula Específica (opcional)
-              <Badge variant="outline" className="text-xs bg-purple-100 text-purple-700">
-                <Wand2 className="h-3 w-3 mr-1" />
-                IA Legal
-              </Badge>
-            </Label>
-            <Textarea
-              value={contractData.observacoes}
-              onChange={(e) => updateContractData('observacoes', e.target.value)}
-              placeholder="Ex: 'lei CLT', 'código civil artigo 421', 'LGPD', 'CDC consumidor'... (Digite e clique em 'Buscar' para economizar tokens)"
-              className="mt-2"
-            />
-            
-            {/* Botão para buscar leis */}
-            <Button 
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleSearchLawsProtected}
-              disabled={!contractData.observacoes || contractData.observacoes.trim().length < 5 || loadingLaws}
-              className="w-full mt-2"
-            >
-              {loadingLaws ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Buscando Leis...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  Buscar Leis Relacionadas
-                </>
-              )}
-            </Button>
-            
-            <div className="text-xs text-gray-500 mt-1">
-              🏛️ Digite sobre leis que deseja aplicar (ex: "lei CLT") e a IA buscará opções específicas para você escolher.
-            </div>
-          </div>
-
-          {/* Lista de Leis Sugeridas */}
-          {suggestedLaws.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Label className="text-sm font-medium">Leis Relacionadas Encontradas</Label>
-                <Badge variant="default" className="text-xs">
-                  {suggestedLaws.length} leis
-                </Badge>
-              </div>
-              
-              <div className="grid gap-2 max-h-64 overflow-y-auto">
-                {suggestedLaws.map((law) => {
-                  const isSelected = selectedLaws.some(l => l.id === law.id)
-                  return (
-                    <div 
-                      key={law.id}
-                      className={`p-3 border rounded-lg cursor-pointer transition-all ${
-                        isSelected 
-                          ? 'border-blue-500 bg-blue-50' 
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                      onClick={() => onToggleLaw(law)}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium text-sm">{law.title}</span>
-                            <Badge 
-                              variant={law.relevance === 'alta' ? 'default' : law.relevance === 'média' ? 'secondary' : 'outline'}
-                              className="text-xs"
-                            >
-                              {law.relevance}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              {law.category}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-gray-600">{law.description}</p>
-                        </div>
-                        <div className="ml-2">
-                          {isSelected ? (
-                            <CheckCircle className="w-5 h-5 text-blue-500" />
-                          ) : (
-                            <div className="w-5 h-5 border-2 border-gray-300 rounded-full" />
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {selectedLaws.length > 0 && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="text-sm font-medium text-green-800">
-                      {selectedLaws.length} lei(s) selecionada(s)
-                    </span>
-                  </div>
-                  <div className="text-xs text-green-700">
-                    Essas leis serão aplicadas automaticamente no seu contrato junto com o prompt.
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-    </div>
-  )
-}
-
-// Componente ReviewForm (externo para evitar re-criação)
-interface ReviewFormProps {
-  data: WizardData
-  selectedLaws: Law[]
-}
-
-const ReviewForm = ({ data, selectedLaws }: ReviewFormProps) => {
-      return (
-      <div className="space-y-8">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold text-gray-900">Revisão dos Dados</h2>
-          <p className="text-gray-600 text-lg">Verifique todas as informações antes de gerar o contrato</p>
-        </div>
-
-      {/* Contratante */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            Contratante ({data.contratante.tipo === 'pf' ? 'Pessoa Física' : 'Pessoa Jurídica'})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div><strong>Nome:</strong> {data.contratante.nome}</div>
-            <div><strong>{data.contratante.tipo === 'pf' ? 'CPF' : 'CNPJ'}:</strong> {data.contratante.documento}</div>
-            <div><strong>Endereço:</strong> {data.contratante.endereco}</div>
-            <div><strong>Cidade:</strong> {data.contratante.cidade}/{data.contratante.estado}</div>
-            {data.contratante.email && <div><strong>Email:</strong> {data.contratante.email}</div>}
-            {data.contratante.telefone && <div><strong>Telefone:</strong> {data.contratante.telefone}</div>}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Contratado(a) */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User className="h-5 w-5" />
-            Contratado(a) ({data.contratada.tipo === 'pf' ? 'Pessoa Física' : 'Pessoa Jurídica'})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div><strong>Nome:</strong> {data.contratada.nome}</div>
-            <div><strong>{data.contratada.tipo === 'pf' ? 'CPF' : 'CNPJ'}:</strong> {data.contratada.documento}</div>
-            <div><strong>Endereço:</strong> {data.contratada.endereco}</div>
-            <div><strong>Cidade:</strong> {data.contratada.cidade}/{data.contratada.estado}</div>
-            {data.contratada.email && <div><strong>Email:</strong> {data.contratada.email}</div>}
-            {data.contratada.telefone && <div><strong>Telefone:</strong> {data.contratada.telefone}</div>}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Contrato */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Detalhes do Contrato
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3 text-sm">
-            <div><strong>Título:</strong> {data.contrato.titulo}</div>
-            <div><strong>Valor:</strong> {data.contrato.valor}</div>
-            <div><strong>Prazo:</strong> {data.contrato.prazo}</div>
-            <div><strong>PROMPT:</strong> {data.contrato.prompt.length > 200 ? data.contrato.prompt.substring(0, 200) + '...' : data.contrato.prompt}</div>
-            {data.contrato.observacoes && (
-              <div><strong>Observações:</strong> {data.contrato.observacoes.length > 100 ? data.contrato.observacoes.substring(0, 100) + '...' : data.contrato.observacoes}</div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Leis Selecionadas */}
-      {selectedLaws.length > 0 && (
+      {/* Passo 1: Dados do Contratante */}
+      {currentStep === 1 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5" />
-              Leis Específicas Selecionadas ({selectedLaws.length})
+              <User className="h-5 w-5" />
+              Dados do Contratante
             </CardTitle>
+            <CardDescription>Informe os dados de quem está contratando o serviço</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {selectedLaws.map((law) => (
-                <div key={law.id} className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="font-semibold text-sm text-gray-900">{law.title}</span>
-                        <Badge 
-                          variant={law.relevance === 'alta' ? 'default' : law.relevance === 'média' ? 'secondary' : 'outline'}
-                          className="text-xs"
-                        >
-                          {law.relevance}
-                        </Badge>
-                        <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800">
-                          {law.category}
-                        </Badge>
+          <CardContent className="space-y-4">
+            {/* Tipo de pessoa */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Tipo de Pessoa *</Label>
+                <Select
+                  value={formData.contratante.tipo}
+                  onValueChange={(value: "pf" | "pj") => updateFormData("contratante", "tipo", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pf">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        Pessoa Física
                       </div>
-                      <p className="text-xs text-gray-600 mb-3">{law.description}</p>
-                      
-                      {/* Artigos Específicos */}
-                      {law.articles && law.articles.length > 0 && (
-                        <div className="mt-3 p-3 bg-white rounded border border-gray-200">
-                          <h5 className="text-xs font-semibold text-gray-700 mb-2 flex items-center">
-                            <FileText className="h-3 w-3 mr-1" />
-                            Artigos Específicos que serão citados:
-                          </h5>
-                          <div className="space-y-2">
-                            {law.articles.map((article, index) => (
-                              <div key={index} className="text-xs border-l-2 border-blue-200 pl-2">
-                                <span className="font-medium text-blue-700">{article.number}:</span>
-                                <span className="text-gray-600 ml-1">{article.text.substring(0, 120)}...</span>
-                                <div className="text-gray-500 italic text-xs mt-1">
-                                  → {article.relevance}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <CheckCircle className="w-5 h-5 text-blue-500 ml-3 flex-shrink-0" />
-                  </div>
-                </div>
-              ))}
-              <div className="text-xs text-green-700 bg-green-50 p-3 rounded border border-green-200">
-                <div className="flex items-center gap-2 mb-1">
-                  <CheckCircle className="h-4 w-4" />
-                  <span className="font-semibold">Aplicação Automática Garantida</span>
-                </div>
-                <p>✅ Estas {selectedLaws.length} lei(s) serão aplicadas no contrato com artigos específicos citados</p>
-                <p className="mt-1">⚖️ Garante máxima segurança jurídica e conformidade legal</p>
+                    </SelectItem>
+                    <SelectItem value="pj">
+                      <div className="flex items-center gap-2">
+                        <Building className="h-4 w-4" />
+                        Pessoa Jurídica
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+            </div>
+
+            {/* Nome e Documento */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {renderInputField(
+                "contratante",
+                "nome",
+                formData.contratante.tipo === "pf" ? "Nome Completo" : "Razão Social",
+                "text",
+                formData.contratante.tipo === "pf" ? "João Silva" : "Empresa LTDA",
+                true,
+                <User className="h-4 w-4" />,
+              )}
+              {renderInputField(
+                "contratante",
+                "documento",
+                formData.contratante.tipo === "pf" ? "CPF" : "CNPJ",
+                "text",
+                formData.contratante.tipo === "pf" ? "000.000.000-00" : "00.000.000/0000-00",
+                true,
+                <CreditCard className="h-4 w-4" />,
+              )}
+            </div>
+
+            {/* Endereço */}
+            {renderInputField(
+              "contratante",
+              "endereco",
+              "Endereço Completo",
+              "text",
+              "Rua das Flores, 123, Centro",
+              true,
+              <MapPin className="h-4 w-4" />,
+            )}
+
+            {/* Cidade, Estado e CEP */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {renderInputField(
+                "contratante",
+                "cidade",
+                "Cidade",
+                "text",
+                "São Paulo",
+                true,
+                <MapPin className="h-4 w-4" />,
+              )}
+              {renderSelectField(
+                "contratante",
+                "estado",
+                "Estado",
+                BRAZILIAN_STATES.map((state) => ({ value: state, label: state })),
+                "Selecione o estado",
+                true,
+                <MapPin className="h-4 w-4" />,
+              )}
+              {renderInputField(
+                "contratante",
+                "cep",
+                "CEP",
+                "text",
+                "00000-000",
+                false,
+                <MapPin className="h-4 w-4" />,
+              )}
+            </div>
+
+            {/* Contatos opcionais */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {renderInputField(
+                "contratante",
+                "telefone",
+                "Telefone",
+                "tel",
+                "(11) 99999-9999",
+                false,
+                <Phone className="h-4 w-4" />,
+              )}
+              {renderInputField(
+                "contratante",
+                "email",
+                "E-mail",
+                "email",
+                "contato@exemplo.com",
+                false,
+                <Mail className="h-4 w-4" />,
+              )}
             </div>
           </CardContent>
         </Card>
       )}
-    </div>
-  )
-}
 
-// Componente principal
-export default function ContractWizard({ 
-  onComplete, 
-  generating, 
-  suggestedLaws, 
-  selectedLaws, 
-  loadingLaws, 
-  onSearchLaws, 
-  onToggleLaw,
-  initialTemplate,
-  initialType
-}: ContractWizardProps) {
-  const { toast } = useToast()
-  const [currentStep, setCurrentStep] = useState(1)
-  const [data, setData] = useState<WizardData>({
-    contratante: { ...INITIAL_PERSON_DATA },
-    contratada: { ...INITIAL_PERSON_DATA },
-    contrato: { 
-      ...INITIAL_CONTRACT_DATA,
-      template: initialTemplate || 'professional',
-      tipo: (initialType as any) || 'servicos'
-    }
-  })
-  
-  // Efeito para aplicar valores iniciais vindos da URL
-  useEffect(() => {
-    if (initialTemplate || initialType) {
-      setData(prev => ({
-        ...prev,
-        contrato: {
-          ...prev.contrato,
-          template: initialTemplate || prev.contrato.template,
-          tipo: (initialType as any) || prev.contrato.tipo
-        }
-      }))
-    }
-  }, [initialTemplate, initialType])
-
-  const steps = [
-    { id: 1, title: "Contratante", icon: Building2 },
-    { id: 2, title: "Contratado(a)", icon: User },
-    { id: 3, title: "Contrato", icon: FileText },
-    { id: 4, title: "Revisão", icon: Eye }
-  ]
-
-  const progress = (currentStep / steps.length) * 100
-
-  // Funções de atualização otimizadas com useCallback
-  const updateContratanteData = useCallback((field: keyof PersonData, value: string) => {
-    setData(prev => ({
-      ...prev,
-      contratante: {
-        ...prev.contratante,
-        [field]: field === 'documento' ? formatDocument(value, prev.contratante.tipo) : value
-      }
-    }))
-  }, [])
-
-  const updateContratadaData = useCallback((field: keyof PersonData, value: string) => {
-    setData(prev => ({
-      ...prev,
-      contratada: {
-        ...prev.contratada,
-        [field]: field === 'documento' ? formatDocument(value, prev.contratada.tipo) : value
-      }
-    }))
-  }, [])
-
-  const updateContractData = useCallback((field: keyof ContractData, value: string) => {
-    setData(prev => ({
-      ...prev,
-      contrato: {
-        ...prev.contrato,
-        [field]: value
-      }
-    }))
-  }, [])
-
-  // Validação da etapa atual
-  const validateCurrentStep = (): boolean => {
-    switch (currentStep) {
-      case 1:
-        const contratante = data.contratante
-        return !!(contratante.nome && contratante.documento && contratante.endereco && contratante.cidade && contratante.estado)
-      case 2:
-        const contratada = data.contratada
-        return !!(contratada.nome && contratada.documento && contratada.endereco && contratada.cidade && contratada.estado)
-      case 3:
-        const contrato = data.contrato
-        return !!(contrato.titulo && contrato.prompt && contrato.valor && contrato.prazo)
-      case 4:
-        return true
-      default:
-        return false
-    }
-  }
-
-  // Renderizar etapa atual
-  const renderCurrentStep = () => {
-    switch (currentStep) {
-      case 1:
-        return (
-          <PersonForm 
-            personData={data.contratante} 
-            title="Dados do Contratante" 
-            updatePersonData={updateContratanteData}
-          />
-        )
-      case 2:
-        return (
-          <PersonForm 
-            personData={data.contratada} 
-            title="Dados do(a) Contratado(a)" 
-            updatePersonData={updateContratadaData}
-          />
-        )
-              case 3:
-          return (
-            <ContractForm 
-              contractData={data.contrato} 
-              updateContractData={updateContractData}
-              suggestedLaws={suggestedLaws}
-              selectedLaws={selectedLaws}
-              loadingLaws={loadingLaws}
-              onSearchLaws={onSearchLaws}
-              onToggleLaw={onToggleLaw}
-            />
-          )
-              case 4:
-          return <ReviewForm data={data} selectedLaws={selectedLaws} />
-      default:
-        return null
-    }
-  }
-
-  const handleComplete = () => {
-    console.log("🚀 [Wizard] Enviando dados:", JSON.stringify(data, null, 2))
-    onComplete(data)
-  }
-
-  return (
-    <div className="max-w-7xl mx-auto p-6 space-y-8">
-      {/* Progress Bar */}
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-4">
-          {steps.map((step) => {
-            const Icon = step.icon
-            const isActive = currentStep === step.id
-            const isComplete = currentStep > step.id
-            
-            return (
-              <div key={step.id} className="flex flex-col items-center">
-                <div className={`
-                  w-12 h-12 rounded-full flex items-center justify-center mb-2
-                  ${isComplete ? 'bg-green-500 text-white' : 
-                    isActive ? 'bg-blue-500 text-white' : 
-                    'bg-gray-200 text-gray-500'}
-                `}>
-                  {isComplete ? <CheckCircle className="h-6 w-6" /> : <Icon className="h-6 w-6" />}
-                </div>
-                <span className={`text-sm font-medium ${isActive ? 'text-blue-600' : 'text-gray-500'}`}>
-                  {step.title}
-                </span>
+      {/* Passo 2: Dados da Contratada */}
+      {currentStep === 2 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Dados da Contratada
+            </CardTitle>
+            <CardDescription>Informe os dados de quem vai prestar o serviço</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Tipo de pessoa */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Tipo de Pessoa *</Label>
+                <Select
+                  value={formData.contratada.tipo}
+                  onValueChange={(value: "pf" | "pj") => updateFormData("contratada", "tipo", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pf">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        Pessoa Física
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="pj">
+                      <div className="flex items-center gap-2">
+                        <Building className="h-4 w-4" />
+                        Pessoa Jurídica
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            )
-          })}
-        </div>
-        <Progress value={progress} className="h-2" />
-      </div>
+            </div>
 
-      {/* Content */}
-      <Card>
-        <CardContent className="p-8">
-          {renderCurrentStep()}
-        </CardContent>
-      </Card>
+            {/* Nome e Documento */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {renderInputField(
+                "contratada",
+                "nome",
+                formData.contratada.tipo === "pf" ? "Nome Completo" : "Razão Social",
+                "text",
+                formData.contratada.tipo === "pf" ? "Maria Santos" : "Prestadora LTDA",
+                true,
+                <User className="h-4 w-4" />,
+              )}
+              {renderInputField(
+                "contratada",
+                "documento",
+                formData.contratada.tipo === "pf" ? "CPF" : "CNPJ",
+                "text",
+                formData.contratada.tipo === "pf" ? "000.000.000-00" : "00.000.000/0000-00",
+                true,
+                <CreditCard className="h-4 w-4" />,
+              )}
+            </div>
 
-      {/* Navigation */}
-      <div className="flex justify-between mt-6">
-        <Button
-          variant="outline"
-          onClick={() => setCurrentStep(prev => Math.max(1, prev - 1))}
-          disabled={currentStep === 1}
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Anterior
-        </Button>
-
-        {currentStep < 4 ? (
-          <Button
-            onClick={() => setCurrentStep(prev => prev + 1)}
-            disabled={!validateCurrentStep()}
-          >
-            Próximo
-            <ArrowRight className="h-4 w-4 ml-2" />
-          </Button>
-        ) : (
-          <Button
-            onClick={handleComplete}
-            disabled={generating || !validateCurrentStep()}
-            size="lg"
-            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-3 text-lg font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Gerando Contrato...
-              </>
-            ) : (
-              <>
-                <Sparkles className="mr-2 h-5 w-5" />
-                Gerar Contrato com IA
-              </>
+            {/* Endereço */}
+            {renderInputField(
+              "contratada",
+              "endereco",
+              "Endereço Completo",
+              "text",
+              "Av. Principal, 456, Bairro",
+              true,
+              <MapPin className="h-4 w-4" />,
             )}
+
+            {/* Cidade, Estado e CEP */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {renderInputField(
+                "contratada",
+                "cidade",
+                "Cidade",
+                "text",
+                "Rio de Janeiro",
+                true,
+                <MapPin className="h-4 w-4" />,
+              )}
+              {renderSelectField(
+                "contratada",
+                "estado",
+                "Estado",
+                BRAZILIAN_STATES.map((state) => ({ value: state, label: state })),
+                "Selecione o estado",
+                true,
+                <MapPin className="h-4 w-4" />,
+              )}
+              {renderInputField("contratada", "cep", "CEP", "text", "00000-000", false, <MapPin className="h-4 w-4" />)}
+            </div>
+
+            {/* Contatos opcionais */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {renderInputField(
+                "contratada",
+                "telefone",
+                "Telefone",
+                "tel",
+                "(21) 88888-8888",
+                false,
+                <Phone className="h-4 w-4" />,
+              )}
+              {renderInputField(
+                "contratada",
+                "email",
+                "E-mail",
+                "email",
+                "prestador@exemplo.com",
+                false,
+                <Mail className="h-4 w-4" />,
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Passo 3: Dados do Contrato */}
+      {currentStep === 3 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Dados do Contrato
+            </CardTitle>
+            <CardDescription>Configure os detalhes do contrato que será gerado</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Título e Tipo */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {renderInputField(
+                "contrato",
+                "titulo",
+                "Título do Contrato",
+                "text",
+                "Contrato de Prestação de Serviços",
+                true,
+                <FileText className="h-4 w-4" />,
+              )}
+              {renderSelectField(
+                "contrato",
+                "tipo",
+                "Tipo de Contrato",
+                CONTRACT_TYPES.map((type) => ({ value: type.value, label: `${type.icon} ${type.label}` })),
+                "Selecione o tipo",
+                true,
+                <FileText className="h-4 w-4" />,
+              )}
+            </div>
+
+            {/* Tipo personalizado (se "outros" for selecionado) */}
+            {formData.contrato.tipo === "outros" &&
+              renderInputField(
+                "contrato",
+                "tipoPersonalizado",
+                "Especifique o Tipo",
+                "text",
+                "Descreva o tipo de contrato",
+                true,
+                <FileText className="h-4 w-4" />,
+              )}
+
+            {/* Descrição do objeto */}
+            {renderTextareaField(
+              "contrato",
+              "prompt",
+              "Descrição Detalhada do Objeto",
+              "Descreva detalhadamente o que será contratado, incluindo especificações técnicas, metodologia, entregáveis, responsabilidades e qualquer informação relevante...",
+              true,
+              6,
+              <FileText className="h-4 w-4" />,
+            )}
+
+            {/* Valor e Prazo */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {renderInputField(
+                "contrato",
+                "valor",
+                "Valor Total",
+                "text",
+                "R$ 5.000,00",
+                true,
+                <DollarSign className="h-4 w-4" />,
+              )}
+              {renderInputField(
+                "contrato",
+                "prazo",
+                "Prazo de Execução",
+                "text",
+                "30 dias corridos",
+                true,
+                <Clock className="h-4 w-4" />,
+              )}
+            </div>
+
+            {/* Template Visual */}
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2">
+                <Palette className="h-4 w-4" />
+                Template Visual
+              </Label>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                {VISUAL_TEMPLATES.map((template) => (
+                  <div
+                    key={template.id}
+                    className={`p-3 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
+                      formData.contrato.template === template.id
+                        ? "border-primary bg-primary/5"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                    onClick={() => updateFormData("contrato", "template", template.id)}
+                  >
+                    <div className="w-full h-8 rounded mb-2" style={{ backgroundColor: template.color }} />
+                    <h4 className="font-medium text-sm">{template.name}</h4>
+                    <p className="text-xs text-muted-foreground">{template.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Observações adicionais */}
+            {renderTextareaField(
+              "contrato",
+              "observacoes",
+              "Observações Adicionais",
+              "Cláusulas especiais, condições específicas, garantias, confidencialidade, etc.",
+              false,
+              4,
+              <FileText className="h-4 w-4" />,
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Passo 4: Contrato Gerado */}
+      {currentStep === 4 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              Contrato Gerado com Sucesso!
+            </CardTitle>
+            <CardDescription>Seu contrato foi gerado e está pronto para uso</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Informações do contrato */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Título</Label>
+                <p className="font-medium">{formData.contrato.titulo}</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <Badge variant="secondary">
+                  {CONTRACT_TYPES.find((t) => t.value === formData.contrato.tipo)?.label || formData.contrato.tipo}
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                <Label>Contratante</Label>
+                <p className="font-medium">{formData.contratante.nome}</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Contratada</Label>
+                <p className="font-medium">{formData.contratada.nome}</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Valor</Label>
+                <p className="font-medium text-green-600">{formData.contrato.valor}</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Prazo</Label>
+                <p className="font-medium">{formData.contrato.prazo}</p>
+              </div>
+            </div>
+
+            {/* Ações */}
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={handlePreviewContract} variant="outline">
+                <Eye className="h-4 w-4 mr-2" />
+                Visualizar
+              </Button>
+              <Button onClick={handleDownloadContract} variant="outline">
+                <Download className="h-4 w-4 mr-2" />
+                Baixar HTML
+              </Button>
+              <Button onClick={handleSaveContract} variant="outline">
+                <Save className="h-4 w-4 mr-2" />
+                Salvar Novamente
+              </Button>
+              <Button onClick={resetForm} variant="outline">
+                <Sparkles className="h-4 w-4 mr-2" />
+                Novo Contrato
+              </Button>
+            </div>
+
+            {/* Preview do contrato */}
+            {generatedContract && (
+              <div className="border rounded-lg p-4 bg-gray-50 max-h-96 overflow-y-auto">
+                <div dangerouslySetInnerHTML={{ __html: generatedContract }} />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Botões de navegação */}
+      {currentStep < 4 && (
+        <div className="flex justify-between">
+          <Button onClick={prevStep} variant="outline" disabled={currentStep === 1}>
+            Anterior
           </Button>
-        )}
-      </div>
+
+          {currentStep < 3 ? (
+            <Button onClick={nextStep}>Próximo</Button>
+          ) : (
+            <Button
+              onClick={generateContract}
+              disabled={isGenerating}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Gerando Contrato...
+                </>
+              ) : (
+                <>
+                  <Zap className="h-4 w-4 mr-2" />
+                  Gerar Contrato com IA
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

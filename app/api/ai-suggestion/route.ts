@@ -1,13 +1,16 @@
-import { z } from "zod"
 import { type NextRequest, NextResponse } from "next/server"
-import OpenAI from "openai"
 
-// ✅ INICIALIZAR OPENAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Verificação de ambiente servidor
+function isServerEnvironment(): boolean {
+  return (
+    typeof window === "undefined" &&
+    typeof global !== "undefined" &&
+    typeof process !== "undefined" &&
+    process.env !== undefined
+  )
+}
 
-// ✅ INTERFACE PARA RESULTADOS DE LEIS
+// Interface para resultados de leis
 interface LawResult {
   id: string
   title: string
@@ -17,7 +20,7 @@ interface LawResult {
   article?: string
   lawNumber?: string
   relevance: "alta" | "média" | "baixa"
-  source: "openai" | "lexml"
+  source: "openai" | "fallback"
   articles?: Array<{
     number: string
     text: string
@@ -25,303 +28,395 @@ interface LawResult {
   }>
 }
 
-// ✅ CACHE INTELIGENTE PARA LEIS
+// Cache para leis
 const lawsCache = new Map<string, { laws: LawResult[]; timestamp: number }>()
 const CACHE_DURATION = 5 * 60 * 1000 // 5 minutos
+const MAX_CACHE_SIZE = 100
 
-// ✅ RATE LIMITING BÁSICO
-const rateLimitMap = new Map<string, { count: number; timestamp: number }>()
+// Rate limiting
+const rateLimitMap = new Map<string, { count: number; timestamp: number; blocked?: boolean }>()
 const RATE_LIMIT_WINDOW = 60 * 1000 // 1 minuto
-const RATE_LIMIT_MAX = 30 // 30 requisições por minuto
+const RATE_LIMIT_MAX = 15
+const BLOCK_DURATION = 5 * 60 * 1000 // 5 minutos
 
-function checkRateLimit(ip: string): boolean {
+function checkRateLimit(ip: string): { allowed: boolean; message?: string } {
   const now = Date.now()
   const windowStart = now - RATE_LIMIT_WINDOW
 
   if (!rateLimitMap.has(ip)) {
     rateLimitMap.set(ip, { count: 1, timestamp: now })
-    return true
+    return { allowed: true }
   }
 
   const clientData = rateLimitMap.get(ip)!
+
+  if (clientData.blocked && now - clientData.timestamp < BLOCK_DURATION) {
+    return {
+      allowed: false,
+      message: `Bloqueado por excesso de requisições. Tente novamente em ${Math.ceil((BLOCK_DURATION - (now - clientData.timestamp)) / 1000)} segundos.`,
+    }
+  }
+
   if (clientData.timestamp < windowStart) {
     rateLimitMap.set(ip, { count: 1, timestamp: now })
-    return true
+    return { allowed: true }
   }
 
   if (clientData.count >= RATE_LIMIT_MAX) {
-    return false
+    rateLimitMap.set(ip, { count: clientData.count + 1, timestamp: now, blocked: true })
+    return {
+      allowed: false,
+      message: `Limite de ${RATE_LIMIT_MAX} requisições por minuto excedido. Bloqueado por 5 minutos.`,
+    }
   }
 
-  clientData.count++
-  return true
+  rateLimitMap.set(ip, { count: clientData.count + 1, timestamp: clientData.timestamp })
+  return { allowed: true }
 }
 
-// ✅ BUSCA INTELIGENTE DE LEIS VIA OPENAI - SISTEMA UNIVERSAL
-async function searchLawsWithOpenAI(query: string): Promise<LawResult[]> {
-  try {
-    console.log(`🔍 [OpenAI] Busca inteligente: "${query.substring(0, 50)}..."`)
-
-    if (!process.env.OPENAI_API_KEY) {
-      console.error("❌ [OpenAI] API Key não configurada")
-      return []
+// Limpeza periódica do rate limit
+setInterval(() => {
+  const now = Date.now()
+  for (const [ip, data] of rateLimitMap.entries()) {
+    if (now - data.timestamp > RATE_LIMIT_WINDOW && !data.blocked) {
+      rateLimitMap.delete(ip)
+    } else if (data.blocked && now - data.timestamp > BLOCK_DURATION) {
+      rateLimitMap.delete(ip)
     }
+  }
+}, RATE_LIMIT_WINDOW)
 
-    const systemPrompt = `
-Você é um ESPECIALISTA JURÍDICO UNIVERSAL com PhD em Direito e 30+ anos de experiência em TODAS as áreas jurídicas brasileiras.
+// Função para buscar leis com OpenAI
+async function searchLawsWithOpenAI(query: string, contractType: string): Promise<LawResult[]> {
+  if (!isServerEnvironment()) {
+    console.warn("⚠️ [AI-Suggestion] Tentativa de usar OpenAI no cliente")
+    return []
+  }
 
-CONTEXTO DA CONSULTA: "${query}"
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY
+  if (!OPENAI_API_KEY) {
+    console.warn("⚠️ [AI-Suggestion] OpenAI API Key não configurada")
+    return []
+  }
 
-INSTRUÇÕES PARA BUSCA INTELIGENTE:
-1. ANALISE o contexto específico da consulta
-2. IDENTIFIQUE a área jurídica predominante (civil, penal, trabalhista, tributário, administrativo, etc.)
-3. RETORNE leis com aplicação DIRETA e IMEDIATA ao contexto
-4. INCLUA artigos, parágrafos e incisos ESPECÍFICOS e APLICÁVEIS
-5. SEJA CIRÚRGICO - apenas leis ultra-relevantes
-6. MÁXIMO 5 leis de altíssima relevância
+  try {
+    console.log(`🔍 [AI-Suggestion] Buscando leis para: "${query}" (tipo: ${contractType})`)
 
-ÁREAS JURÍDICAS - EXEMPLOS DE APLICAÇÃO:
-- DIREITO CIVIL: Código Civil, leis de locação, contratos, família
-- DIREITO PENAL: Código Penal, leis penais especiais, execução penal
-- DIREITO TRABALHISTA: CLT, leis trabalhistas, previdência
-- DIREITO TRIBUTÁRIO: CTN, leis tributárias específicas
-- DIREITO ADMINISTRATIVO: Leis administrativas, licitações, servidores
-- DIREITO PROCESSUAL: CPC, CPP, leis processuais
-- DIREITO CONSTITUCIONAL: Constituição Federal, leis constitucionais
-- DIREITO EMPRESARIAL: Lei das S.A., falência, propriedade industrial
-- DIREITO AMBIENTAL: Leis ambientais, licenciamento, crimes ambientais
-- DIREITO DIGITAL: LGPD, Marco Civil, crimes digitais
+    const systemPrompt = `Você é um especialista em Direito Brasileiro com foco em legislação aplicável a contratos.
 
-PRECISÃO CONTEXTUAL:
-- Se sobre CONTRATOS PENAIS ou CRIMES → inclua Código Penal, leis penais especiais
-- Se sobre CONTRATOS CIVIS → inclua Código Civil, leis civis específicas
-- Se sobre CONTRATOS TRABALHISTAS → inclua CLT, leis trabalhistas
-- Se sobre CONTRATOS TRIBUTÁRIOS → inclua CTN, leis tributárias
-- Se sobre CONTRATOS ADMINISTRATIVOS → inclua leis administrativas
-- SEMPRE conecte leis ao contexto específico solicitado
+MISSÃO: Identificar as leis brasileiras mais relevantes para o tipo de contrato "${contractType}" e contexto "${query}".
 
-FORMATO JSON OBRIGATÓRIO:
+INSTRUÇÕES:
+1. Retorne APENAS leis brasileiras vigentes e aplicáveis
+2. Foque em leis específicas para o tipo de contrato: ${contractType}
+3. Inclua artigos específicos quando relevantes
+4. Ordene por relevância (alta, média, baixa)
+5. Máximo 8 leis por resposta
+
+FORMATO DE RESPOSTA (JSON):
 {
   "laws": [
     {
-      "id": "unique_id",
-      "title": "Nome completo da lei",
-      "description": "Aplicação específica no contexto solicitado",
-      "category": "área jurídica",
-      "subcategory": "subárea específica",
-      "article": "artigos principais aplicáveis",
-      "lawNumber": "número da lei",
+      "id": "lei_8078_1990",
+      "title": "Lei 8.078/90 - Código de Defesa do Consumidor",
+      "description": "Proteção dos direitos do consumidor em relações de consumo",
+      "category": "Direito do Consumidor",
+      "subcategory": "Relações de Consumo",
+      "article": "Art. 6º - Direitos básicos do consumidor",
+      "lawNumber": "8.078/90",
       "relevance": "alta",
       "articles": [
         {
-          "number": "Art. X",
-          "text": "Descrição do artigo",
-          "relevance": "aplicação no contexto"
+          "number": "Art. 6º",
+          "text": "São direitos básicos do consumidor...",
+          "relevance": "alta"
         }
       ]
     }
   ]
 }
 
-VALIDAÇÃO FINAL: Cada lei deve ter aplicação IMEDIATA e DIRETA no contexto solicitado.
+TIPOS DE CONTRATO E LEIS PRINCIPAIS:
+- servicos: CDC, Código Civil, CLT
+- trabalho: CLT, Constituição Federal
+- locacao: Lei 8.245/91, Código Civil
+- compra_venda: Código Civil, CDC
+- consultoria: Código Civil, CLT
+- prestacao_servicos: Código Civil, CDC
+- fornecimento: Código Civil, CDC
+- sociedade: Lei 6.404/76, Código Civil
+- parceria: Código Civil, Lei 11.101/2005
+- franquia: Lei 8.955/94
+- licenciamento: Lei 9.279/96, Lei 9.610/98
+- manutencao: Código Civil, CDC
+- seguro: Código Civil, SUSEP
+- financiamento: Código Civil, Lei 8.078/90
 
-Retorne APENAS o JSON válido:`
+Retorne APENAS o JSON válido, sem explicações adicionais.`
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o", // ✅ UPGRADE PARA GPT-4o - MODELO MAIS PODEROSO
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: query }
-      ],
-      temperature: 0.1, // ✅ REDUZIDO PARA MÁXIMA PRECISÃO JURÍDICA
-      max_tokens: 4000, // ✅ AUMENTADO PARA ARTIGOS MAIS DETALHADOS
-      response_format: { type: "json_object" }
-    })
-
-    const response = completion.choices[0]?.message?.content
-
-    if (!response) {
-      console.log("❌ [OpenAI] Resposta vazia")
-      return []
-    }
-
-    const parsedResponse = JSON.parse(response)
-    const laws = parsedResponse.laws || []
-
-    console.log(`✅ [OpenAI] ${laws.length} leis encontradas`)
-    
-    // Validar e sanitizar leis com artigos específicos
-    const validLaws = laws
-      .filter((law: any) => law.title && law.description && law.category)
-      .slice(0, 5) // Máximo 5 leis ultra-relevantes
-      .map((law: any, index: number) => ({
-        id: law.id || `law_${Date.now()}_${index}`,
-        title: law.title.substring(0, 250),
-        description: law.description.substring(0, 600),
-        category: law.category,
-        subcategory: law.subcategory || law.category,
-        article: law.article,
-        lawNumber: law.lawNumber,
-        relevance: law.relevance || "alta",
-        source: "openai",
-        articles: law.articles || [] // Incluir artigos específicos
-      }))
-
-    return validLaws
-
-  } catch (error) {
-    console.error("❌ [OpenAI] Erro na busca:", error)
-    return []
-  }
-}
-
-// ✅ BUSCA VIA LEXML (SISTEMA BACKUP)
-async function searchLawsWithLexML(query: string): Promise<LawResult[]> {
-  try {
-    console.log(`🔍 [LexML] Buscando leis para: "${query}"`)
-
-    // Implementação básica - pode ser melhorada com API real do LexML
-    const searchUrl = `https://www.lexml.gov.br/busca/search?q=${encodeURIComponent(query)}&formato=json`
-    
-    const response = await fetch(searchUrl, {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
       headers: {
-        'User-Agent': 'NexarIA Legal Search Bot 1.0'
-      }
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt,
+          },
+          {
+            role: "user",
+            content: `Buscar leis para contrato tipo "${contractType}" com contexto: "${query}"`,
+          },
+        ],
+        max_tokens: 2000,
+        temperature: 0.1,
+        top_p: 0.9,
+      }),
     })
 
     if (!response.ok) {
-      console.log(`❌ [LexML] Erro HTTP: ${response.status}`)
+      const errorText = await response.text()
+      console.error(`❌ [AI-Suggestion] OpenAI Error: ${response.status} - ${errorText}`)
       return []
     }
 
-    // Para agora, retornar array vazio - LexML precisa de implementação específica
-    console.log(`🔄 [LexML] Funcionalidade em desenvolvimento`)
-    return []
+    const data = await response.json()
+    const content = data.choices[0]?.message?.content?.trim()
 
+    if (!content) {
+      console.warn("⚠️ [AI-Suggestion] OpenAI retornou resposta vazia")
+      return []
+    }
+
+    try {
+      const parsed = JSON.parse(content)
+      const laws = parsed.laws || []
+
+      console.log(`✅ [AI-Suggestion] OpenAI encontrou ${laws.length} leis`)
+
+      return laws.map((law: any) => ({
+        ...law,
+        source: "openai" as const,
+      }))
+    } catch (parseError) {
+      console.error("❌ [AI-Suggestion] Erro ao parsear resposta da OpenAI:", parseError)
+      console.log("Resposta recebida:", content)
+      return []
+    }
   } catch (error) {
-    console.error("❌ [LexML] Erro na busca:", error)
+    console.error("❌ [AI-Suggestion] Erro na OpenAI:", error)
     return []
   }
 }
 
-// ✅ FUNÇÃO PRINCIPAL DE BUSCA INTELIGENTE
-async function searchLaws(query: string): Promise<LawResult[]> {
-  const queryLower = query.toLowerCase().trim()
-
-  if (!queryLower || queryLower.length < 3) {
-    return []
+// Função fallback com leis pré-definidas
+function getFallbackLaws(contractType: string, query: string): LawResult[] {
+  const fallbackLaws: Record<string, LawResult[]> = {
+    servicos: [
+      {
+        id: "cc_2002",
+        title: "Lei 10.406/2002 - Código Civil",
+        description: "Regras gerais sobre contratos de prestação de serviços",
+        category: "Direito Civil",
+        subcategory: "Contratos",
+        article: "Art. 593 a 609 - Prestação de Serviços",
+        lawNumber: "10.406/2002",
+        relevance: "alta" as const,
+        source: "fallback" as const,
+        articles: [
+          {
+            number: "Art. 593",
+            text: "A prestação de serviço, que não estiver sujeita às leis trabalhistas ou a lei especial, reger-se-á pelas disposições deste Capítulo.",
+            relevance: "alta",
+          },
+        ],
+      },
+      {
+        id: "cdc_1990",
+        title: "Lei 8.078/90 - Código de Defesa do Consumidor",
+        description: "Proteção nas relações de consumo de serviços",
+        category: "Direito do Consumidor",
+        subcategory: "Prestação de Serviços",
+        article: "Art. 14 - Responsabilidade por serviços defeituosos",
+        lawNumber: "8.078/90",
+        relevance: "alta" as const,
+        source: "fallback" as const,
+      },
+    ],
+    trabalho: [
+      {
+        id: "clt_1943",
+        title: "Decreto-Lei 5.452/43 - CLT",
+        description: "Consolidação das Leis do Trabalho",
+        category: "Direito Trabalhista",
+        subcategory: "Contratos de Trabalho",
+        article: "Art. 442 - Contrato individual de trabalho",
+        lawNumber: "5.452/43",
+        relevance: "alta" as const,
+        source: "fallback" as const,
+      },
+    ],
+    locacao: [
+      {
+        id: "lei_locacao_1991",
+        title: "Lei 8.245/91 - Lei do Inquilinato",
+        description: "Locações de imóveis urbanos",
+        category: "Direito Imobiliário",
+        subcategory: "Locação",
+        article: "Art. 1º - Locações de imóveis urbanos",
+        lawNumber: "8.245/91",
+        relevance: "alta" as const,
+        source: "fallback" as const,
+      },
+    ],
+    compra_venda: [
+      {
+        id: "cc_compra_venda",
+        title: "Lei 10.406/2002 - Código Civil",
+        description: "Contrato de compra e venda",
+        category: "Direito Civil",
+        subcategory: "Contratos",
+        article: "Art. 481 a 532 - Compra e Venda",
+        lawNumber: "10.406/2002",
+        relevance: "alta" as const,
+        source: "fallback" as const,
+      },
+    ],
+    consultoria: [
+      {
+        id: "cc_consultoria",
+        title: "Lei 10.406/2002 - Código Civil",
+        description: "Prestação de serviços de consultoria",
+        category: "Direito Civil",
+        subcategory: "Contratos",
+        article: "Art. 593 a 609 - Prestação de Serviços",
+        lawNumber: "10.406/2002",
+        relevance: "alta" as const,
+        source: "fallback" as const,
+      },
+    ],
   }
 
-  // Verificar cache
-  const cached = lawsCache.get(queryLower)
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    console.log(`💾 [Cache] Leis encontradas no cache para: "${queryLower}"`)
-    return cached.laws
-  }
-
-  console.log(`🔍 [Laws] Busca inteligente iniciada para: "${queryLower}"`)
-
-  // Buscar via OpenAI primeiro
-  let laws = await searchLawsWithOpenAI(queryLower)
-
-  // Se OpenAI não retornou resultados suficientes, tentar LexML
-  if (laws.length < 3) {
-    console.log(`🔄 [Laws] Tentando LexML como backup...`)
-    const lexmlLaws = await searchLawsWithLexML(queryLower)
-    laws = [...laws, ...lexmlLaws].slice(0, 8)
-  }
-
-  // Salvar no cache
-  if (laws.length > 0) {
-    lawsCache.set(queryLower, { laws, timestamp: Date.now() })
-  }
-
-  console.log(`✅ [Laws] ${laws.length} leis específicas encontradas para "${queryLower}"`)
+  const laws = fallbackLaws[contractType] || fallbackLaws.servicos
+  console.log(`📚 [AI-Suggestion] Usando ${laws.length} leis fallback para tipo: ${contractType}`)
 
   return laws
 }
 
-export async function POST(request: NextRequest) {
+// Função principal para buscar leis
+async function searchLaws(query: string, contractType: string): Promise<LawResult[]> {
+  try {
+    // Verificar cache primeiro
+    const cacheKey = `${contractType}_${query.toLowerCase().trim()}`
+    const cached = lawsCache.get(cacheKey)
+
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      console.log(`💾 [AI-Suggestion] Cache hit para: ${cacheKey}`)
+      return cached.laws
+    }
+
+    // Tentar OpenAI primeiro
+    let laws = await searchLawsWithOpenAI(query, contractType)
+
+    // Se OpenAI falhar, usar fallback
+    if (laws.length === 0) {
+      console.log("🔄 [AI-Suggestion] OpenAI falhou, usando fallback")
+      laws = getFallbackLaws(contractType, query)
+    }
+
+    // Salvar no cache
+    if (lawsCache.size >= MAX_CACHE_SIZE) {
+      const oldestKey = lawsCache.keys().next().value
+      lawsCache.delete(oldestKey)
+    }
+
+    lawsCache.set(cacheKey, {
+      laws,
+      timestamp: Date.now(),
+    })
+
+    return laws
+  } catch (error) {
+    console.error("❌ [AI-Suggestion] Erro geral:", error)
+    return getFallbackLaws(contractType, query)
+  }
+}
+
+export async function POST(req: NextRequest) {
   try {
     // Rate limiting
-    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown"
-    if (!checkRateLimit(ip)) {
+    const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown"
+    const rateCheck = checkRateLimit(ip)
+
+    if (!rateCheck.allowed) {
       return NextResponse.json(
         {
           success: false,
           error: "Rate limit exceeded",
-          message: "Muitas requisições. Aguarde 1 minuto.",
+          message: rateCheck.message,
         },
         { status: 429 },
       )
     }
 
-    const { observacoes } = await request.json()
+    const { query, contractType } = await req.json()
 
-    if (!observacoes || typeof observacoes !== "string" || observacoes.trim().length < 3) {
-      return NextResponse.json({
-        success: true,
-        laws: [],
-        message:
-          "Digite pelo menos 3 caracteres para buscar leis específicas (ex: 'contrato penal', 'direito trabalhista', 'crime digital', 'locação residencial')",
-      })
-    }
-
-    // Verificar se OpenAI está configurado
-    if (!process.env.OPENAI_API_KEY) {
+    // Validação de entrada
+    if (!query || typeof query !== "string" || query.trim().length < 3) {
       return NextResponse.json(
         {
           success: false,
-          error: "OpenAI não configurado",
-          message: "Chave da API OpenAI não encontrada. Configure OPENAI_API_KEY no .env.local",
+          error: "Query inválida",
+          message: "A consulta deve ter pelo menos 3 caracteres",
         },
-        { status: 500 },
+        { status: 400 },
       )
     }
 
-    console.log(`🔍 [Laws] Busca universal por: "${observacoes.substring(0, 100)}..."`)
-
-    // Buscar leis com sistema inteligente
-    const laws = await searchLaws(observacoes)
-
-    if (laws.length === 0) {
-      console.log(`❌ [Laws] Nenhuma lei específica encontrada para: "${observacoes}"`)
-      return NextResponse.json({
-        success: true,
-        laws: [],
-        message:
-          "Nenhuma lei específica encontrada. Tente termos mais específicos como 'direito penal', 'crime digital', 'contrato trabalho', 'direito tributário', etc.",
-      })
+    if (!contractType || typeof contractType !== "string") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Tipo de contrato inválido",
+          message: "Tipo de contrato é obrigatório",
+        },
+        { status: 400 },
+      )
     }
 
-    console.log(`✅ [Laws] ${laws.length} leis específicas encontradas`)
+    // Sanitizar entrada
+    const sanitizedQuery = query.trim().substring(0, 200)
+    const sanitizedContractType = contractType.trim().toLowerCase()
+
+    console.log(`🔍 [AI-Suggestion] Buscando leis para: "${sanitizedQuery}" (${sanitizedContractType})`)
+
+    // Buscar leis
+    const laws = await searchLaws(sanitizedQuery, sanitizedContractType)
+
+    console.log(`✅ [AI-Suggestion] Encontradas ${laws.length} leis relevantes`)
 
     return NextResponse.json({
       success: true,
       laws,
-      type: "laws_selection",
-      message: `${laws.length} lei(s) específica(s) encontrada(s) via busca inteligente GPT-4o`,
-      searchMethod: laws[0]?.source || "openai"
+      query: sanitizedQuery,
+      contractType: sanitizedContractType,
+      cached: false,
+      source: laws.length > 0 ? laws[0].source : "fallback",
     })
   } catch (error) {
-    console.error("❌ [Laws] Erro ao buscar leis:", error)
+    console.error("❌ [AI-Suggestion] Erro:", error)
 
     return NextResponse.json(
       {
         success: false,
-        error: "Erro interno",
-        message: "Erro ao buscar leis. Verifique sua conexão e tente novamente.",
+        error: "Erro interno do servidor",
+        message: "Erro ao buscar sugestões de leis. Tente novamente.",
       },
       { status: 500 },
     )
   }
-}
-
-export async function GET() {
-  return NextResponse.json({
-    message: "API de sugestões de leis ativa",
-    version: "2.0",
-    model: "GPT-4o",
-    features: ["Busca inteligente", "Cache otimizado", "Rate limiting", "Suporte universal"]
-  })
 }

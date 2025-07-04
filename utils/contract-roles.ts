@@ -266,4 +266,4 @@ export default {
   CONTRACT_ROLES,
   VALID_CONTRACT_TYPES,
   getContractRoles
-} 
+}

@@ -1,20 +1,22 @@
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
-import type { Database } from "@/types/database"
+import { createServerClient, type CookieOptions } from "@supabase/ssr"
+import { NextResponse, type NextRequest } from "next/server"
 
-export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
+export async function middleware(request: NextRequest) {
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
 
   try {
     // Skip middleware in preview environments
     const isPreview =
-      req.nextUrl.hostname.includes("vusercontent.net") ||
-      req.nextUrl.hostname.includes("v0.dev") ||
-      req.nextUrl.hostname.includes("localhost")
+      request.nextUrl.hostname.includes("vusercontent.net") ||
+      request.nextUrl.hostname.includes("v0.dev") ||
+      request.nextUrl.hostname.includes("localhost")
 
     if (isPreview) {
-      return res
+      return response
     }
 
     // Check if Supabase is configured
@@ -32,45 +34,91 @@ export async function middleware(req: NextRequest) {
 
     // If not configured, allow all routes (demo mode)
     if (!isConfigured) {
-      return res
+      return response
     }
 
-    const supabase = createMiddlewareClient<Database>({ req, res })
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return request.cookies.get(name)?.value
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            request.cookies.set({
+              name,
+              value,
+              ...options,
+            })
+            response = NextResponse.next({
+              request: {
+                headers: request.headers,
+              },
+            })
+            response.cookies.set({
+              name,
+              value,
+              ...options,
+            })
+          },
+          remove(name: string, options: CookieOptions) {
+            request.cookies.set({
+              name,
+              value: "",
+              ...options,
+            })
+            response = NextResponse.next({
+              request: {
+                headers: request.headers,
+              },
+            })
+            response.cookies.set({
+              name,
+              value: "",
+              ...options,
+            })
+          },
+        },
+      },
+    )
 
     // Get session with timeout to prevent hanging
-    const sessionPromise = supabase.auth.getSession()
+    const sessionPromise = supabase.auth.getUser()
     const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Session timeout")), 5000))
 
-    let session = null
+    let user = null
     try {
       const result = (await Promise.race([sessionPromise, timeoutPromise])) as any
-      session = result?.data?.session
+      user = result?.data?.user
     } catch (error) {
       console.warn("Session check failed, allowing access:", error)
-      return res
+      return response
     }
 
     // Protected routes
     const protectedRoutes = ["/dashboard", "/profile", "/generator", "/templates", "/exports", "/subscription"]
     const authRoutes = ["/auth/login", "/auth/register"]
 
-    const isProtectedRoute = protectedRoutes.some((route) => req.nextUrl.pathname.startsWith(route))
-    const isAuthRoute = authRoutes.some((route) => req.nextUrl.pathname.startsWith(route))
+    const isProtectedRoute = protectedRoutes.some((route) => request.nextUrl.pathname.startsWith(route))
+    const isAuthRoute = authRoutes.some((route) => request.nextUrl.pathname.startsWith(route))
 
     // Redirect to login if accessing protected route without session
-    if (isProtectedRoute && !session) {
-      return NextResponse.redirect(new URL("/auth/login", req.url))
+    if (isProtectedRoute && !user) {
+      const redirectUrl = new URL("/auth/login", request.url)
+      redirectUrl.searchParams.set("redirect", request.nextUrl.pathname)
+      return NextResponse.redirect(redirectUrl)
     }
 
     // Redirect to dashboard if accessing auth routes with session
-    if (isAuthRoute && session) {
-      return NextResponse.redirect(new URL("/dashboard", req.url))
+    if (isAuthRoute && user) {
+      return NextResponse.redirect(new URL("/dashboard", request.url))
     }
 
-    return res
+    return response
   } catch (error) {
     console.warn("Middleware error, allowing access:", error)
-    return res
+    return response
   }
 }
 

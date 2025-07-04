@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useEffect, useState } from "react"
+import { createContext, useContext, useEffect, useState, useRef } from "react"
 import { useSupabaseClient, useSessionContext, useUser } from "@supabase/auth-helpers-react"
 import type { Database } from "@/types/database"
 
@@ -20,7 +20,6 @@ interface AuthContextType {
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<{ error: any }>
   refreshProfile: () => Promise<void>
-  refreshSession: () => Promise<{ session: any; error: any }> // ✅ Adicionar esta linha
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -35,16 +34,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "error" | "checking">("checking")
 
+  // CORREÇÃO: Prevenir race conditions
+  const fetchingRef = useRef(false)
+  const initializingRef = useRef(false)
+
   // Initialize auth state
   useEffect(() => {
     const initializeAuth = async () => {
+      // CORREÇÃO: Prevenir múltiplas inicializações simultâneas
+      if (initializingRef.current) return
+      initializingRef.current = true
+
       try {
         setConnectionStatus("checking")
 
         // Test connectivity with a simple query
         try {
           const { data, error } = await supabase.from("profiles").select("id").limit(1)
-          if (error) throw error
+          if (error && error.code !== "PGRST116") throw error
           setConnectionStatus("connected")
         } catch (error) {
           console.error("Database connection error:", error)
@@ -62,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         // If user is authenticated, fetch data
-        if (session?.user) {
+        if (session?.user && !fetchingRef.current) {
           await fetchUserData(session.user.id)
         } else {
           setLoading(false)
@@ -71,6 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error("Auth initialization error:", error)
         setConnectionStatus("error")
         setLoading(false)
+      } finally {
+        initializingRef.current = false
       }
     }
 
@@ -79,43 +88,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Fetch user data
   const fetchUserData = async (userId: string) => {
+    // CORREÇÃO: Prevenir múltiplas chamadas simultâneas
+    if (fetchingRef.current) return
+    fetchingRef.current = true
+
     try {
       setLoading(true)
 
       // Small delay to allow triggers to execute
       await new Promise((resolve) => setTimeout(resolve, 500))
 
-      // Fetch profile
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle()
+      // CORREÇÃO: Buscar dados em paralelo com Promise.allSettled
+      const [profileResult, subscriptionResult] = await Promise.allSettled([
+        supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
+        supabase.from("subscriptions").select("*").eq("user_id", userId).maybeSingle(),
+      ])
 
-      if (profileData) {
-        setProfile(profileData)
-      } else if (!profileError || profileError.code === "PGRST116") {
-        // Create profile if not found
-        const newProfile = await createUserProfile(userId)
-        if (newProfile) {
-          setProfile(newProfile)
+      // Handle profile
+      if (profileResult.status === "fulfilled") {
+        const { data: profileData, error: profileError } = profileResult.value
+
+        if (profileData) {
+          setProfile(profileData)
+        } else if (!profileError || profileError.code === "PGRST116") {
+          // Create profile if not found
+          const newProfile = await createUserProfile(userId)
+          if (newProfile) {
+            setProfile(newProfile)
+          }
+        } else {
+          console.error("Profile fetch error:", profileError)
         }
       }
 
-      // Fetch subscription
-      const { data: subData, error: subError } = await supabase
-        .from("subscriptions")
-        .select("*")
-        .eq("user_id", userId)
-        .maybeSingle()
+      // Handle subscription
+      if (subscriptionResult.status === "fulfilled") {
+        const { data: subData, error: subError } = subscriptionResult.value
 
-      if (subData) {
-        setSubscription(subData)
-      } else if (!subError || subError.code === "PGRST116") {
-        // Create subscription if not found
-        const newSubscription = await createUserSubscription(userId)
-        if (newSubscription) {
-          setSubscription(newSubscription)
+        if (subData) {
+          setSubscription(subData)
+        } else if (!subError || subError.code === "PGRST116") {
+          // Create subscription if not found
+          const newSubscription = await createUserSubscription(userId)
+          if (newSubscription) {
+            setSubscription(newSubscription)
+          }
+        } else {
+          console.error("Subscription fetch error:", subError)
         }
       }
 
@@ -125,6 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setConnectionStatus("error")
     } finally {
       setLoading(false)
+      fetchingRef.current = false
     }
   }
 
@@ -148,7 +168,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         whatsapp: userMetadata.whatsapp || null,
       }
 
-      const { data, error } = await supabase.from("profiles").insert(profileData).select().single()
+      // CORREÇÃO: Usar upsert para evitar conflitos
+      const { data, error } = await supabase
+        .from("profiles")
+        .upsert(profileData, { onConflict: "id" })
+        .select()
+        .single()
 
       if (error) throw error
       return data
@@ -168,7 +193,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         data_expiracao: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       }
 
-      const { data, error } = await supabase.from("subscriptions").insert(subscriptionData).select().single()
+      // CORREÇÃO: Usar upsert para evitar conflitos
+      const { data, error } = await supabase
+        .from("subscriptions")
+        .upsert(subscriptionData, { onConflict: "user_id" })
+        .select()
+        .single()
 
       if (error) throw error
       return data
@@ -180,8 +210,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
+      // CORREÇÃO: Validação de entrada
+      if (!email || !password) {
+        throw new Error("Email e senha são obrigatórios")
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim().toLowerCase(),
         password,
       })
 
@@ -195,13 +230,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string, userData: any) => {
     try {
+      // CORREÇÃO: Validação de entrada
+      if (!email || !password) {
+        throw new Error("Email e senha são obrigatórios")
+      }
+
+      if (password.length < 6) {
+        throw new Error("Senha deve ter pelo menos 6 caracteres")
+      }
+
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: email.trim().toLowerCase(),
         password,
         options: {
           data: {
             ...userData,
-            email: email,
+            email: email.trim().toLowerCase(),
           },
         },
       })
@@ -216,6 +260,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
+      // CORREÇÃO: Limpar estado local antes do signOut
+      setProfile(null)
+      setSubscription(null)
+      setLoading(false)
+
       const { error } = await supabase.auth.signOut()
       if (error) throw error
     } catch (err) {
@@ -227,7 +276,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!user?.id) throw new Error("No user")
 
-      const { error } = await supabase.from("profiles").update(updates).eq("id", user.id)
+      // CORREÇÃO: Validar dados antes de atualizar
+      const sanitizedUpdates = Object.fromEntries(Object.entries(updates).filter(([_, value]) => value !== undefined))
+
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          ...sanitizedUpdates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id)
 
       if (error) throw error
       await refreshProfile()
@@ -239,30 +297,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const refreshProfile = async () => {
-    if (user?.id) {
+    if (user?.id && !fetchingRef.current) {
       await fetchUserData(user.id)
     }
   }
 
-  // Adicione esta função dentro do AuthProvider, antes do return:
-
-  const refreshSession = async () => {
-    try {
-      const { data, error } = await supabase.auth.refreshSession()
-      if (error) throw error
-
-      if (data.session?.user) {
-        await fetchUserData(data.session.user.id)
-      }
-
-      return { session: data.session, error: null }
-    } catch (err: any) {
-      console.error("Erro ao renovar sessão:", err)
-      return { session: null, error: err }
-    }
-  }
-
-  // E adicione refreshSession ao value do contexto:
   const value = {
     user,
     session,
@@ -275,7 +314,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut,
     updateProfile,
     refreshProfile,
-    refreshSession, // ✅ Adicionar esta linha
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

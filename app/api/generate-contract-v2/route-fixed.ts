@@ -1,23 +1,40 @@
 import { z } from "zod"
 import { type NextRequest, NextResponse } from "next/server"
+import OpenAI from "openai"
 
-// Schema para validação dos dados estruturados
+// CORREÇÃO: Validação mais rigorosa
 const PersonSchema = z.object({
   tipo: z.enum(["pf", "pj"], {
     errorMap: () => ({ message: "Tipo deve ser 'pf' (Pessoa Física) ou 'pj' (Pessoa Jurídica)" }),
   }),
-  nome: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").max(200, "Nome muito longo"),
-  documento: z.string().min(8, "Documento deve ter pelo menos 8 caracteres").max(20, "Documento muito longo"),
+  nome: z
+    .string()
+    .min(2, "Nome deve ter pelo menos 2 caracteres")
+    .max(200, "Nome muito longo")
+    .refine((val) => val.trim().length > 0, "Nome não pode estar vazio"),
+  documento: z
+    .string()
+    .min(8, "Documento deve ter pelo menos 8 caracteres")
+    .max(20, "Documento muito longo")
+    .refine((val) => /^[\d.\-/]+$/.test(val), "Documento deve conter apenas números e caracteres especiais"),
   endereco: z.string().min(5, "Endereço deve ser informado").max(300, "Endereço muito longo"),
   cidade: z.string().min(2, "Cidade é obrigatória").max(100, "Nome da cidade muito longo"),
-  estado: z.string().min(2, "Estado é obrigatório").max(2, "Estado deve ter exatamente 2 caracteres (ex: SP, RJ)"),
+  estado: z
+    .string()
+    .min(2, "Estado é obrigatório")
+    .max(2, "Estado deve ter exatamente 2 caracteres (ex: SP, RJ)")
+    .refine((val) => /^[A-Z]{2}$/.test(val), "Estado deve ter 2 letras maiúsculas"),
   cep: z.string().optional(),
   telefone: z.string().optional(),
-  email: z.string().email("Email deve ter formato válido (exemplo@dominio.com)").optional().or(z.literal("")),
+  email: z.string().email("Email deve ter formato válido").optional().or(z.literal("")),
 })
 
 const ContractSchema = z.object({
-  titulo: z.string().min(3, "Título deve ter pelo menos 3 caracteres").max(200, "Título muito longo"),
+  titulo: z
+    .string()
+    .min(3, "Título deve ter pelo menos 3 caracteres")
+    .max(200, "Título muito longo")
+    .refine((val) => val.trim().length > 0, "Título não pode estar vazio"),
   tipo: z.enum(
     [
       "servicos",
@@ -40,12 +57,16 @@ const ContractSchema = z.object({
       errorMap: () => ({ message: "Tipo de contrato inválido" }),
     },
   ),
-  tipoPersonalizado: z.string().optional(), // Para quando tipo for "outros"
-  prompt: z.string().min(20, "PROMPT deve ter pelo menos 20 caracteres").max(3000, "PROMPT muito longo"),
+  tipoPersonalizado: z.string().optional(),
+  prompt: z
+    .string()
+    .min(20, "PROMPT deve ter pelo menos 20 caracteres")
+    .max(3000, "PROMPT muito longo")
+    .refine((val) => val.trim().length >= 20, "PROMPT deve ter conteúdo significativo"),
   valor: z.string().min(1, "Valor é obrigatório").max(50, "Valor muito longo"),
   prazo: z.string().min(1, "Prazo é obrigatório").max(100, "Prazo muito longo"),
   observacoes: z.string().max(1000, "Observações muito longas").optional(),
-  template: z.string().optional(), // Template visual escolhido
+  template: z.string().optional(),
   leisSelecionadas: z
     .array(
       z.object({
@@ -55,7 +76,7 @@ const ContractSchema = z.object({
         context: z.string().optional(),
       }),
     )
-    .optional(), // Campo para leis selecionadas via OpenAI
+    .optional(),
 })
 
 const GenerateContractV2Schema = z.object({
@@ -64,60 +85,68 @@ const GenerateContractV2Schema = z.object({
   contrato: ContractSchema,
 })
 
-// Validação de CPF
+// CORREÇÃO: Validação de CPF melhorada
 const validateCPF = (cpf: string): boolean => {
-  const cleaned = cpf.replace(/[^\d]/g, "")
-  if (cleaned.length !== 11 || cleaned.match(/^(\d)\1{10}$/)) return false
+  try {
+    const cleaned = cpf.replace(/[^\d]/g, "")
+    if (cleaned.length !== 11 || cleaned.match(/^(\d)\1{10}$/)) return false
 
-  let sum = 0
-  for (let i = 0; i < 9; i++) {
-    sum += Number.parseInt(cleaned.charAt(i)) * (10 - i)
-  }
-  let remainder = (sum * 10) % 11
-  if (remainder === 10 || remainder === 11) remainder = 0
-  if (remainder !== Number.parseInt(cleaned.charAt(9))) return false
+    let sum = 0
+    for (let i = 0; i < 9; i++) {
+      sum += Number.parseInt(cleaned.charAt(i)) * (10 - i)
+    }
+    let remainder = (sum * 10) % 11
+    if (remainder === 10 || remainder === 11) remainder = 0
+    if (remainder !== Number.parseInt(cleaned.charAt(9))) return false
 
-  sum = 0
-  for (let i = 0; i < 10; i++) {
-    sum += Number.parseInt(cleaned.charAt(i)) * (11 - i)
+    sum = 0
+    for (let i = 0; i < 10; i++) {
+      sum += Number.parseInt(cleaned.charAt(i)) * (11 - i)
+    }
+    remainder = (sum * 10) % 11
+    if (remainder === 10 || remainder === 11) remainder = 0
+    return remainder === Number.parseInt(cleaned.charAt(10))
+  } catch {
+    return false
   }
-  remainder = (sum * 10) % 11
-  if (remainder === 10 || remainder === 11) remainder = 0
-  return remainder === Number.parseInt(cleaned.charAt(10))
 }
 
-// Validação de CNPJ
+// CORREÇÃO: Validação de CNPJ melhorada
 const validateCNPJ = (cnpj: string): boolean => {
-  const cleaned = cnpj.replace(/[^\d]/g, "")
-  if (cleaned.length !== 14 || cleaned.match(/^(\d)\1{13}$/)) return false
+  try {
+    const cleaned = cnpj.replace(/[^\d]/g, "")
+    if (cleaned.length !== 14 || cleaned.match(/^(\d)\1{13}$/)) return false
 
-  let length = cleaned.length - 2
-  let numbers = cleaned.substring(0, length)
-  const digits = cleaned.substring(length)
-  let sum = 0
-  let pos = length - 7
+    let length = cleaned.length - 2
+    let numbers = cleaned.substring(0, length)
+    const digits = cleaned.substring(length)
+    let sum = 0
+    let pos = length - 7
 
-  for (let i = length; i >= 1; i--) {
-    sum += Number.parseInt(numbers.charAt(length - i)) * pos--
-    if (pos < 2) pos = 9
+    for (let i = length; i >= 1; i--) {
+      sum += Number.parseInt(numbers.charAt(length - i)) * pos--
+      if (pos < 2) pos = 9
+    }
+
+    let result = sum % 11 < 2 ? 0 : 11 - (sum % 11)
+    if (result !== Number.parseInt(digits.charAt(0))) return false
+
+    length = length + 1
+    numbers = cleaned.substring(0, length)
+    sum = 0
+    pos = length - 7
+    for (let i = length; i >= 1; i--) {
+      sum += Number.parseInt(numbers.charAt(length - i)) * pos--
+      if (pos < 2) pos = 9
+    }
+    result = sum % 11 < 2 ? 0 : 11 - (sum % 11)
+    return result === Number.parseInt(digits.charAt(1))
+  } catch {
+    return false
   }
-
-  let result = sum % 11 < 2 ? 0 : 11 - (sum % 11)
-  if (result !== Number.parseInt(digits.charAt(0))) return false
-
-  length = length + 1
-  numbers = cleaned.substring(0, length)
-  sum = 0
-  pos = length - 7
-  for (let i = length; i >= 1; i--) {
-    sum += Number.parseInt(numbers.charAt(length - i)) * pos--
-    if (pos < 2) pos = 9
-  }
-  result = sum % 11 < 2 ? 0 : 11 - (sum % 11)
-  return result === Number.parseInt(digits.charAt(1))
 }
 
-// Templates CSS para diferentes estilos
+// Templates CSS para diferentes estilos (mantido igual)
 const getTemplateStyles = (templateId: string): string => {
   const templates = {
     professional: `
@@ -185,11 +214,10 @@ const getTemplateStyles = (templateId: string): string => {
   return templates[templateId as keyof typeof templates] || templates.professional
 }
 
-// Gerar cláusulas dinâmicas com IA
+// Gerar cláusulas dinâmicas com IA (mantido igual)
 const generateDynamicClauses = (data: z.infer<typeof GenerateContractV2Schema>): string => {
   const { contratante, contratada, contrato } = data
 
-  // Gerar cláusulas específicas baseadas no tipo e objeto do contrato
   let specificClauses = ""
 
   if (contrato.tipo === "servicos") {
@@ -223,7 +251,6 @@ const generateDynamicClauses = (data: z.infer<typeof GenerateContractV2Schema>):
     </div>`
   }
 
-  // Adicionar cláusulas baseadas nas observações
   let observationClauses = ""
   if (contrato.observacoes && contrato.observacoes.trim()) {
     const obs = contrato.observacoes.toLowerCase()
@@ -256,17 +283,13 @@ const generateDynamicClauses = (data: z.infer<typeof GenerateContractV2Schema>):
   return specificClauses + observationClauses
 }
 
-// Gerar contrato com dados estruturados
+// Gerar contrato com dados estruturados (mantido igual)
 const generateStructuredContract = (data: z.infer<typeof GenerateContractV2Schema>): string => {
   const { contratante, contratada, contrato } = data
 
-  // Obter o template CSS escolhido
   const templateStyles = getTemplateStyles(contrato.template || "professional")
-
-  // Gerar cláusulas dinâmicas
   const dynamicClauses = generateDynamicClauses(data)
 
-  // Definir labels corretos baseado no tipo
   const contratanteLabel = contratante.tipo === "pf" ? "CONTRATANTE (Pessoa Física)" : "CONTRATANTE (Empresa)"
   const contratadaLabel = contratada.tipo === "pf" ? "CONTRATADA (Pessoa Física)" : "CONTRATADA (Empresa)"
 
@@ -461,7 +484,7 @@ const generateStructuredContract = (data: z.infer<typeof GenerateContractV2Schem
     <div class="contract-container">
         <div class="contract-header">
             <h1 class="contract-title">${contrato.titulo}</h1>
-            <div class="contract-subtitle">Contrato gerado com IA - GPT-4o-mini Avançado</div>
+            <div class="contract-subtitle">Contrato gerado com IA - GPT-4o Avançado</div>
         </div>
         
         <div class="parties-intro">
@@ -487,10 +510,10 @@ const generateStructuredContract = (data: z.infer<typeof GenerateContractV2Schem
             </p>
         </div>
 
-            <div class="clause-title">CLÁUSULA 1ª - OBJETO DO CONTRATO</div>
-    <div class="clause-content">
-      <p>${contrato.prompt}</p>
-    </div>
+        <div class="clause-title">CLÁUSULA 1ª - OBJETO DO CONTRATO</div>
+        <div class="clause-content">
+          <p>${contrato.prompt}</p>
+        </div>
 
         <div class="clause-title">CLÁUSULA 2ª - VALOR E FORMA DE PAGAMENTO</div>
         <div class="clause-content">
@@ -561,18 +584,56 @@ const generateStructuredContract = (data: z.infer<typeof GenerateContractV2Schem
         </div>
         
         <div class="ai-generated">
-            Contrato gerado automaticamente pela NexarIA com tecnologia GPT-4o-mini Avançado
+            Contrato gerado automaticamente pela NexarIA com tecnologia GPT-4o Avançado
         </div>
     </div>
 </body>
 </html>`
 }
 
-// Cache em memória
-const cache = new Map<string, { data: any; timestamp: number }>()
+// CORREÇÃO: Cache em memória com controle de tamanho
+const cache = new Map<string, { data: any; timestamp: number; size: number }>()
 const CACHE_DURATION = 5 * 60 * 1000 // 5 minutos
+const MAX_CACHE_SIZE = 100 // Máximo 100 entradas
+const MAX_CACHE_MEMORY = 50 * 1024 * 1024 // 50MB
 
-// Sistema de detecção de padrões de bot (similar ao generate-smart-contract)
+// CORREÇÃO: Função para calcular tamanho da entrada
+const calculateCacheEntrySize = (data: any): number => {
+  try {
+    return JSON.stringify(data).length * 2 // Aproximação em bytes
+  } catch {
+    return 1000 // Fallback
+  }
+}
+
+// CORREÇÃO: Função para limpar cache quando necessário
+const cleanupCache = () => {
+  const now = Date.now()
+  let totalSize = 0
+
+  // Remover entradas expiradas
+  for (const [key, entry] of cache.entries()) {
+    if (now - entry.timestamp > CACHE_DURATION) {
+      cache.delete(key)
+    } else {
+      totalSize += entry.size
+    }
+  }
+
+  // Se ainda estiver muito grande, remover as mais antigas
+  if (cache.size > MAX_CACHE_SIZE || totalSize > MAX_CACHE_MEMORY) {
+    const entries = Array.from(cache.entries()).sort((a, b) => a[1].timestamp - b[1].timestamp)
+
+    while (cache.size > MAX_CACHE_SIZE * 0.8 || totalSize > MAX_CACHE_MEMORY * 0.8) {
+      const [key, entry] = entries.shift()!
+      cache.delete(key)
+      totalSize -= entry.size
+      if (entries.length === 0) break
+    }
+  }
+}
+
+// Sistema de detecção de padrões de bot (mantido igual mas com melhorias)
 interface BotPattern {
   ip: string
   timestamps: number[]
@@ -580,28 +641,28 @@ interface BotPattern {
   blockEndTime?: number
   suspicionLevel: number
   blockCount: number
+  violations: number // CORREÇÃO: Adicionar contador de violações
 }
 
 const botDetection = new Map<string, BotPattern>()
 
-// Configuração para detecção
 const BOT_CONFIG = {
-  minInterval: 4000, // 4 segundos mínimo entre requests (mais conservador para v2)
-  maxRequestsPerWindow: 4, // Máximo 4 requests em 3 minutos
-  windowDuration: 180000, // Janela de 3 minutos
-  patternThreshold: 65, // 65% de suspeita = bloqueio
-  initialBlockDuration: 180000, // 3 minutos inicial
-  maxBlockDuration: 3600000, // 1 hora máximo
+  minInterval: 4000,
+  maxRequestsPerWindow: 4,
+  windowDuration: 180000,
+  patternThreshold: 65,
+  initialBlockDuration: 180000,
+  maxBlockDuration: 3600000,
 }
 
-// Função para detectar padrões suspeitos
+// CORREÇÃO: Função melhorada para detectar padrões suspeitos
 function detectBotPatterns(ip: string, timestamps: number[]): number {
   if (timestamps.length < 2) return 0
 
   let suspicion = 0
-  const recentRequests = timestamps.slice(-8) // Últimos 8 requests
+  const recentRequests = timestamps.slice(-8)
 
-  // 1. Detectar intervalos muito regulares (padrão de bot)
+  // 1. Detectar intervalos muito regulares
   const intervals = recentRequests.slice(1).map((timestamp, i) => timestamp - recentRequests[i])
 
   if (intervals.length >= 2) {
@@ -609,7 +670,6 @@ function detectBotPatterns(ip: string, timestamps: number[]): number {
     const variance =
       intervals.reduce((sum, interval) => sum + Math.pow(interval - avgInterval, 2), 0) / intervals.length
 
-    // Se a variância é muito baixa = padrão muito regular = bot
     if (variance < 150 && avgInterval < 8000) {
       suspicion += 45
       console.warn(`🤖 [Contract V2 Bot] IP ${ip}: Padrão regular detectado`, { avgInterval, variance })
@@ -617,283 +677,462 @@ function detectBotPatterns(ip: string, timestamps: number[]): number {
   }
 
   // 2. Detectar requests muito rápidos consecutivos
-  const fastRequests = intervals.filter((interval) => interval < BOT_CONFIG.minInterval).length
-  if (fastRequests > 0) {
-    suspicion += fastRequests * 25
-    console.warn(`🤖 [Contract V2 Bot] IP ${ip}: ${fastRequests} requests muito rápidos`)
+  const rapidRequests = intervals.filter((interval) => interval < BOT_CONFIG.minInterval).length
+  if (rapidRequests >= 1) {
+    suspicion += 35
+    console.warn(`🤖 [Contract V2 Bot] IP ${ip}: Requests muito rápidos:`, rapidRequests)
   }
 
-  // 3. Detectar volume alto em pouco tempo
-  const last2Minutes = timestamps.filter((t) => Date.now() - t < 120000).length
-  if (last2Minutes > 6) {
+  // 3. Detectar excesso de requests na janela
+  const now = Date.now()
+  const recentCount = timestamps.filter((t) => now - t < BOT_CONFIG.windowDuration).length
+  if (recentCount > BOT_CONFIG.maxRequestsPerWindow) {
     suspicion += 30
-    console.warn(`🤖 [Contract V2 Bot] IP ${ip}: ${last2Minutes} requests em 2 minutos`)
+    console.warn(`🤖 [Contract V2 Bot] IP ${ip}: Excesso de requests:`, recentCount)
+  }
+
+  // 4. Detectar intervalos idênticos
+  const identicalIntervals = intervals.filter((interval, index) => intervals.indexOf(interval) !== index).length
+
+  if (identicalIntervals >= 1) {
+    suspicion += 40
+    console.warn(`🤖 [Contract V2 Bot] IP ${ip}: Intervalos idênticos:`, identicalIntervals)
   }
 
   return Math.min(suspicion, 100)
 }
 
-// Função para verificar e atualizar detecção de bot
-function checkBotDetection(ip: string): { isBlocked: boolean; reason?: string } {
+// CORREÇÃO: Calcular duração do bloqueio progressivo
+function calculateBlockDuration(blockCount: number, violations: number): number {
+  const baseMultiplier = [1, 2.7, 6.7, 15, 20][Math.min(blockCount, 4)]
+  const violationMultiplier = Math.min(violations * 0.5, 3) // Máximo 3x por violações
+  const totalMultiplier = baseMultiplier * (1 + violationMultiplier)
+
+  return Math.min(BOT_CONFIG.initialBlockDuration * totalMultiplier, BOT_CONFIG.maxBlockDuration)
+}
+
+// CORREÇÃO: Middleware melhorado de detecção de bot
+function checkBotBehavior(ip: string): { blocked: boolean; reason?: string; remainingTime?: number } {
   const now = Date.now()
   let pattern = botDetection.get(ip)
 
   if (!pattern) {
     pattern = {
       ip,
-      timestamps: [now],
+      timestamps: [],
       isBlocked: false,
       suspicionLevel: 0,
       blockCount: 0,
+      violations: 0,
     }
     botDetection.set(ip, pattern)
-    return { isBlocked: false }
   }
 
   // Verificar se ainda está bloqueado
   if (pattern.isBlocked && pattern.blockEndTime && now < pattern.blockEndTime) {
+    const remainingTime = pattern.blockEndTime - now
     return {
-      isBlocked: true,
-      reason: `Bloqueado por suspeita de bot. Tente novamente em ${Math.ceil((pattern.blockEndTime - now) / 60000)} minutos.`,
+      blocked: true,
+      reason: `Comportamento automatizado detectado. Aguarde ${Math.ceil(remainingTime / 60000)} minutos.`,
+      remainingTime,
     }
   }
 
-  // Remover timestamps antigos (fora da janela)
-  pattern.timestamps = pattern.timestamps.filter((t) => now - t < BOT_CONFIG.windowDuration)
+  // Se o bloqueio expirou, resetar
+  if (pattern.isBlocked && pattern.blockEndTime && now >= pattern.blockEndTime) {
+    pattern.isBlocked = false
+    pattern.blockEndTime = undefined
+    pattern.suspicionLevel = Math.max(0, pattern.suspicionLevel - 30)
+    console.log(`✅ [Contract V2 Bot] IP ${ip}: Bloqueio expirado, usuário liberado`)
+  }
+
+  // Adicionar timestamp atual
   pattern.timestamps.push(now)
 
-  // Verificar se excedeu limite de requests
-  if (pattern.timestamps.length > BOT_CONFIG.maxRequestsPerWindow) {
-    pattern.suspicionLevel += 40
-    console.warn(`🤖 [Contract V2 Bot] IP ${ip}: Excedeu limite de requests (${pattern.timestamps.length})`)
-  }
+  // Limpar timestamps antigos
+  pattern.timestamps = pattern.timestamps.filter((t) => now - t < BOT_CONFIG.windowDuration * 2).slice(-15)
 
   // Detectar padrões suspeitos
-  const patternSuspicion = detectBotPatterns(ip, pattern.timestamps)
-  pattern.suspicionLevel = Math.max(pattern.suspicionLevel, patternSuspicion)
+  const newSuspicion = detectBotPatterns(ip, pattern.timestamps)
+  pattern.suspicionLevel = newSuspicion
 
-  // Aplicar bloqueio se necessário
-  if (pattern.suspicionLevel >= BOT_CONFIG.patternThreshold) {
+  // Bloquear se suspeita muito alta
+  if (newSuspicion >= BOT_CONFIG.patternThreshold) {
+    pattern.violations++
+    const blockDuration = calculateBlockDuration(pattern.blockCount, pattern.violations)
     pattern.isBlocked = true
+    pattern.blockEndTime = now + blockDuration
     pattern.blockCount++
 
-    // Aumentar duração do bloqueio progressivamente
-    const blockDuration = Math.min(
-      BOT_CONFIG.initialBlockDuration * Math.pow(2, pattern.blockCount - 1),
-      BOT_CONFIG.maxBlockDuration,
+    console.warn(
+      `🚨 [Contract V2 Bot] IP ${ip} bloqueado! Suspeita: ${newSuspicion}% por ${Math.round(blockDuration / 60000)}min`,
     )
 
-    pattern.blockEndTime = now + blockDuration
-
-    console.warn(`🚫 [Contract V2 Bot] IP ${ip} BLOQUEADO por ${Math.ceil(blockDuration / 60000)} minutos`, {
-      suspicionLevel: pattern.suspicionLevel,
-      blockCount: pattern.blockCount,
-      timestamps: pattern.timestamps.length,
-    })
-
     return {
-      isBlocked: true,
-      reason: `Atividade suspeita detectada. Bloqueado por ${Math.ceil(blockDuration / 60000)} minutos.`,
+      blocked: true,
+      reason: `Geração automatizada detectada (${newSuspicion}% de confiança). Bloqueado por ${Math.ceil(blockDuration / 60000)} minutos.`,
+      remainingTime: blockDuration,
     }
   }
 
-  // Reduzir suspeita gradualmente se comportamento melhorar
-  if (pattern.suspicionLevel > 0 && patternSuspicion < 20) {
-    pattern.suspicionLevel = Math.max(0, pattern.suspicionLevel - 5)
+  // Verificar intervalo mínimo
+  if (pattern.timestamps.length >= 2) {
+    const lastInterval =
+      pattern.timestamps[pattern.timestamps.length - 1] - pattern.timestamps[pattern.timestamps.length - 2]
+
+    if (lastInterval < BOT_CONFIG.minInterval) {
+      pattern.suspicionLevel = Math.min(pattern.suspicionLevel + 20, 100)
+
+      if (pattern.suspicionLevel >= BOT_CONFIG.patternThreshold) {
+        pattern.violations++
+        const blockDuration = calculateBlockDuration(pattern.blockCount, pattern.violations)
+        pattern.isBlocked = true
+        pattern.blockEndTime = now + blockDuration
+        pattern.blockCount++
+
+        console.warn(`🚨 [Contract V2 Bot] IP ${ip} bloqueado por requests muito rápidos`)
+        return {
+          blocked: true,
+          reason: `Requests muito rápidos detectados. Aguarde ${Math.ceil(blockDuration / 60000)} minutos.`,
+          remainingTime: blockDuration,
+        }
+      }
+    }
   }
 
-  botDetection.set(ip, pattern)
-  return { isBlocked: false }
+  return { blocked: false }
 }
 
-// Limpeza periódica do cache e detecção de bot
-setInterval(() => {
-  const now = Date.now()
+// CORREÇÃO: Limpeza automática melhorada
+setInterval(
+  () => {
+    const now = Date.now()
+    const oneHour = 60 * 60 * 1000
 
-  // Limpar cache expirado
-  for (const [key, value] of cache.entries()) {
-    if (now - value.timestamp > CACHE_DURATION) {
-      cache.delete(key)
+    // Limpar cache
+    cleanupCache()
+
+    // Limpar padrões de bot antigos
+    for (const [ip, pattern] of botDetection.entries()) {
+      if (!pattern.isBlocked && pattern.timestamps.length > 0) {
+        const lastActivity = Math.max(...pattern.timestamps)
+        if (now - lastActivity > oneHour) {
+          botDetection.delete(ip)
+        }
+      }
+      // CORREÇÃO: Reduzir violações antigas
+      if (now - (pattern.timestamps[pattern.timestamps.length - 1] || 0) > oneHour * 6) {
+        pattern.violations = Math.max(0, pattern.violations - 1)
+      }
+    }
+  },
+  5 * 60 * 1000,
+)
+
+// CORREÇÃO: Detectar conteúdo suspeito melhorado
+function detectSuspiciousContent(data: any): boolean {
+  const textFields = [
+    data.contratante?.nome,
+    data.contratada?.nome,
+    data.contrato?.titulo,
+    data.contrato?.prompt,
+    data.contrato?.observacoes,
+  ].filter(Boolean)
+
+  const suspiciousPatterns = [
+    /(.)\1{15,}/, // Caracteres repetidos
+    /^(test|teste|spam|bot|auto|xxx)\s*$/i,
+    /^\s*[a-z]\s*$/i, // Apenas uma letra
+    /[\x00-\x1F\x7F]/, // Caracteres de controle
+    /script|javascript|eval|function/i, // Tentativas de injection
+    /<[^>]*>/g, // Tags HTML
+    /[^\w\s\-.,$$$$[\]{}:;!?@#$%&*+=/\\]/g, // Caracteres especiais suspeitos
+  ]
+
+  return textFields.some((text) => suspiciousPatterns.some((pattern) => pattern.test(text)))
+}
+
+// CORREÇÃO: Validação adicional de dados
+function validateContractData(data: z.infer<typeof GenerateContractV2Schema>): string[] {
+  const errors: string[] = []
+
+  // Validar CPF/CNPJ
+  if (data.contratante.tipo === "pf" && !validateCPF(data.contratante.documento)) {
+    errors.push("CPF do contratante inválido")
+  }
+  if (data.contratante.tipo === "pj" && !validateCNPJ(data.contratante.documento)) {
+    errors.push("CNPJ do contratante inválido")
+  }
+  if (data.contratada.tipo === "pf" && !validateCPF(data.contratada.documento)) {
+    errors.push("CPF da contratada inválido")
+  }
+  if (data.contratada.tipo === "pj" && !validateCNPJ(data.contratada.documento)) {
+    errors.push("CNPJ da contratada inválido")
+  }
+
+  // Validar emails se fornecidos
+  if (data.contratante.email && data.contratante.email.trim()) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(data.contratante.email)) {
+      errors.push("Email do contratante inválido")
+    }
+  }
+  if (data.contratada.email && data.contratada.email.trim()) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(data.contratada.email)) {
+      errors.push("Email da contratada inválido")
     }
   }
 
-  // Limpar detecção de bot expirada
-  for (const [ip, pattern] of botDetection.entries()) {
-    if (pattern.isBlocked && pattern.blockEndTime && now > pattern.blockEndTime) {
-      pattern.isBlocked = false
-      pattern.suspicionLevel = Math.max(0, pattern.suspicionLevel - 20)
-    }
+  return errors
+}
 
-    // Remover entradas muito antigas
-    if (pattern.timestamps.length === 0 || now - Math.max(...pattern.timestamps) > 3600000) {
-      botDetection.delete(ip)
-    }
-  }
-}, 60000) // Limpeza a cada minuto
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
 
 export async function POST(request: NextRequest) {
-  const startTime = Date.now()
-
   try {
-    // ✅ CORREÇÃO: Obter IP real do usuário
-    const forwarded = request.headers.get("x-forwarded-for")
-    const realIp = request.headers.get("x-real-ip")
-    const ip = forwarded?.split(",")[0] || realIp || "unknown"
+    // CORREÇÃO: Obter IP real com fallback
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      request.headers.get("x-real-ip")?.trim() ||
+      request.headers.get("cf-connecting-ip")?.trim() ||
+      "unknown"
 
-    console.log(`🚀 [Contract V2] Nova requisição de ${ip}`)
+    console.log(`📋 [Contract V2] Request recebido do IP: ${ip}`)
 
-    // ✅ CORREÇÃO: Verificar detecção de bot
-    const botCheck = checkBotDetection(ip)
-    if (botCheck.isBlocked) {
-      console.warn(`🚫 [Contract V2] Request bloqueado para ${ip}: ${botCheck.reason}`)
+    // Verificar detecção de bot
+    const botCheck = checkBotBehavior(ip)
+    if (botCheck.blocked) {
       return NextResponse.json(
         {
-          error: "Rate limit exceeded",
+          error: "Bot detectado",
           message: botCheck.reason,
-          type: "RATE_LIMIT_EXCEEDED",
+          remainingTime: botCheck.remainingTime,
         },
         { status: 429 },
       )
     }
 
-    // ✅ CORREÇÃO: Validar dados de entrada
-    const body = await request.json()
-    console.log("📝 [Contract V2] Dados recebidos:", {
-      contratante: body.contratante?.nome,
-      contratada: body.contratada?.nome,
-      tipo: body.contrato?.tipo,
-      titulo: body.contrato?.titulo,
+    // CORREÇÃO: Timeout para parsing do body
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Timeout no parsing do request")), 10000),
+    )
+
+    const bodyPromise = request.json()
+    const body = await Promise.race([bodyPromise, timeoutPromise])
+
+    // Validar dados
+    const validatedData = GenerateContractV2Schema.parse(body)
+
+    // CORREÇÃO: Validação adicional
+    const validationErrors = validateContractData(validatedData)
+    if (validationErrors.length > 0) {
+      return NextResponse.json({ error: "Dados inválidos", details: validationErrors }, { status: 400 })
+    }
+
+    // Detectar conteúdo suspeito
+    if (detectSuspiciousContent(validatedData)) {
+      console.warn(`🚨 [Suspicious Content V2] IP ${ip}`)
+      return NextResponse.json({ error: "Conteúdo suspeito detectado" }, { status: 400 })
+    }
+
+    // Verificar cache
+    const cacheKey = JSON.stringify({
+      prompt: validatedData.contrato.prompt,
+      tipo: validatedData.contrato.tipo,
+      template: validatedData.contrato.template,
     })
 
-    // Validação com Zod
-    const validationResult = GenerateContractV2Schema.safeParse(body)
-    if (!validationResult.success) {
-      console.error("❌ [Contract V2] Erro de validação:", validationResult.error.errors)
-      return NextResponse.json(
-        {
-          error: "Dados inválidos",
-          details: validationResult.error.errors.map((err) => ({
-            field: err.path.join("."),
-            message: err.message,
-          })),
-        },
-        { status: 400 },
-      )
-    }
-
-    const data = validationResult.data
-
-    // ✅ CORREÇÃO: Validar documentos (CPF/CNPJ)
-    if (data.contratante.tipo === "pf" && !validateCPF(data.contratante.documento)) {
-      return NextResponse.json({ error: "CPF do contratante inválido" }, { status: 400 })
-    }
-
-    if (data.contratante.tipo === "pj" && !validateCNPJ(data.contratante.documento)) {
-      return NextResponse.json({ error: "CNPJ do contratante inválido" }, { status: 400 })
-    }
-
-    if (data.contratada.tipo === "pf" && !validateCPF(data.contratada.documento)) {
-      return NextResponse.json({ error: "CPF da contratada inválido" }, { status: 400 })
-    }
-
-    if (data.contratada.tipo === "pj" && !validateCNPJ(data.contratada.documento)) {
-      return NextResponse.json({ error: "CNPJ da contratada inválido" }, { status: 400 })
-    }
-
-    // ✅ CORREÇÃO: Verificar cache
-    const cacheKey = JSON.stringify(data)
     const cached = cache.get(cacheKey)
+
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      console.log("⚡ [Contract V2] Retornando do cache")
+      console.log("🎯 [Cache Hit V2] Retornando contrato em cache")
       return NextResponse.json({
-        success: true,
-        contract: cached.data,
+        ...cached.data,
         cached: true,
-        processingTime: Date.now() - startTime,
+        cacheTime: new Date(cached.timestamp).toISOString(),
       })
     }
 
-    // ✅ CORREÇÃO: Gerar contrato estruturado
-    console.log("🔄 [Contract V2] Gerando contrato estruturado...")
-    const contractHtml = generateStructuredContract(data)
+    const { contratante, contratada, contrato } = validatedData
 
-    // ✅ CORREÇÃO: Salvar no cache
-    cache.set(cacheKey, {
-      data: contractHtml,
-      timestamp: Date.now(),
-    })
+    // Detectar tamanho do contrato baseado no prompt
+    let tamanhoContrato = "normal"
+    const promptLower = contrato.prompt.toLowerCase()
+    if (promptLower.includes("resumido") || promptLower.includes("básico") || promptLower.includes("simples")) {
+      tamanhoContrato = "resumido"
+    } else if (
+      promptLower.includes("completo") ||
+      promptLower.includes("detalhado") ||
+      promptLower.includes("extenso") ||
+      promptLower.includes("2 páginas")
+    ) {
+      tamanhoContrato = "completo"
+    }
 
-    const processingTime = Date.now() - startTime
-    console.log(`✅ [Contract V2] Contrato gerado com sucesso em ${processingTime}ms`)
+    // Construir lista de leis selecionadas
+    let leisEspecificas = ""
+    if (validatedData.contrato.leisSelecionadas && validatedData.contrato.leisSelecionadas.length > 0) {
+      leisEspecificas = `
 
-    return NextResponse.json({
-      success: true,
-      contract: contractHtml,
-      cached: false,
-      processingTime,
-      metadata: {
-        titulo: data.contrato.titulo,
-        tipo: data.contrato.tipo,
-        contratante: data.contratante.nome,
-        contratada: data.contratada.nome,
-        valor: data.contrato.valor,
-        prazo: data.contrato.prazo,
-        template: data.contrato.template || "professional",
-        generatedAt: new Date().toISOString(),
-      },
-    })
+LEIS ESPECÍFICAS SOLICITADAS PELO USUÁRIO (DEVE USAR OBRIGATORIAMENTE):
+${validatedData.contrato.leisSelecionadas
+  .map(
+    (lei, index) =>
+      `${index + 1}. ${lei.text}
+     Descrição: ${lei.description}
+     ${lei.context ? `Contexto: ${lei.context}` : ""}
+     ${lei.category ? `Categoria: ${lei.category}` : ""}`,
+  )
+  .join("\n\n")}
+
+INSTRUÇÕES CRÍTICAS SOBRE AS LEIS:
+- Você DEVE fundamentar o contrato especificamente nestas leis acima
+- Cite os artigos, números de lei e dispositivos específicos
+- Inclua pelo menos uma cláusula detalhada para CADA lei listada
+- Use a nomenclatura exata das leis fornecidas
+- Demonstre conformidade legal explícita com cada dispositivo
+`
+    }
+
+    const systemPrompt = `Você é um ESPECIALISTA JURÍDICO SÊNIOR em Direito Contratual Brasileiro com mais de 20 anos de experiência. Sua expertise inclui todas as áreas do direito brasileiro: civil, trabalhista, empresarial, consumidor${leisEspecificas}, tributário, imobiliário, dados pessoais (LGPD), e regulamentações específicas.
+
+MISSÃO: Gerar um contrato PROFISSIONAL, COMPLETO e JURIDICAMENTE ROBUSTO seguindo as mais altas práticas jurídicas brasileiras.
+
+🏛️ DIRETRIZES JURÍDICAS RIGOROSAS:
+
+TIPO DE CONTRATO: ${contrato.tipo}
+TAMANHO: ${tamanhoContrato}
+
+DADOS DAS PARTES:
+CONTRATANTE: ${contratante.nome} (${contratante.tipo === "pf" ? "CPF" : "CNPJ"}: ${contratante.documento})
+Endereço: ${contratante.endereco}, ${contratante.cidade}/${contratante.estado}, CEP: ${contratante.cep}
+Telefone: ${contratante.telefone}, Email: ${contratante.email}
+
+CONTRATADO(A): ${contratada.nome} (${contratada.tipo === "pf" ? "CPF" : "CNPJ"}: ${contratada.documento})
+Endereço: ${contratada.endereco}, ${contratada.cidade}/${contratada.estado}, CEP: ${contratada.cep}
+Telefone: ${contratada.telefone}, Email: ${contratada.email}
+
+INSTRUÇÕES OBRIGATÓRIAS:
+1. Use APENAS linguagem jurídica brasileira correta
+2. Inclua todas as cláusulas essenciais para este tipo de contrato
+3. Use os dados reais das partes fornecidos acima
+4. Use termos neutros: "CONTRATADO(A)" e "CONTRATANTE"
+5. Retorne APENAS o HTML do contrato, sem explicações
+6. Use HTML semântico correto com classes CSS
+7. Inclua espaços para assinaturas lado a lado no final
+
+💰 **VALOR CONTRATUAL**: R$ ${contrato.valor || "A ser especificado pelas partes"}
+⏰ **PRAZO CONTRATUAL**: ${contrato.prazo || "Conforme especificado nas cláusulas contratuais"}
+📝 **OBSERVAÇÕES E REQUISITOS ESPECIAIS**: ${contrato.observacoes || "Nenhuma observação adicional"}
+
+⚖️ **BASE JURÍDICA**: Aplicar rigorosamente a legislação brasileira específica para ${contrato.tipo}, incluindo todas as normativas federais, estaduais e municipais pertinentes
+
+ESTRUTURA OBRIGATÓRIA:
+- Título do contrato
+- Identificação completa das partes (com dados reais)
+- Objeto/finalidade do contrato
+- Obrigações de cada parte
+- Condições de pagamento (se aplicável)
+- Prazo de vigência
+- Cláusulas específicas do tipo de contrato
+- Disposições gerais
+- Foro competente (comarca brasileira)
+- Local e data para assinatura
+- Campos de assinatura lado a lado
+
+FORMATO DE SAÍDA: Retorne apenas as cláusulas do contrato em HTML limpo, sem marcações de código.`
+
+    const userPrompt = `PROMPT DO USUÁRIO: ${contrato.prompt}
+
+Gere um contrato ${tamanhoContrato} de ${contrato.tipo} seguindo exatamente as instruções acima.`
+
+    // CORREÇÃO: Timeout configurado e melhorado
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 45000) // 45s timeout
+
+    try {
+      const completion = await openai.chat.completions.create(
+        {
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          max_tokens: tamanhoContrato === "resumido" ? 8000 : tamanhoContrato === "completo" ? 16000 : 12000,
+          temperature: 0.1,
+        },
+        {
+          signal: controller.signal,
+        },
+      )
+
+      clearTimeout(timeoutId)
+
+      const contractHTML = completion.choices[0]?.message?.content
+
+      if (!contractHTML) {
+        throw new Error("Falha ao gerar contrato")
+      }
+
+      const result = {
+        contract: contractHTML,
+        type: contrato.tipo,
+        template: contrato.template || "professional",
+        size: tamanhoContrato,
+        parties: {
+          contratante: contratante.nome,
+          contratada: contratada.nome,
+        },
+        timestamp: new Date().toISOString(),
+        cached: false,
+      }
+
+      // CORREÇÃO: Salvar no cache com controle de tamanho
+      const entrySize = calculateCacheEntrySize(result)
+      if (entrySize < MAX_CACHE_MEMORY * 0.1) {
+        // Máximo 10% da memória total por entrada
+        cleanupCache() // Limpar antes de adicionar
+        cache.set(cacheKey, {
+          data: result,
+          timestamp: Date.now(),
+          size: entrySize,
+        })
+      }
+
+      console.log(`✅ [Contract V2 Generated] IP: ${ip}, Type: ${contrato.tipo}, Size: ${tamanhoContrato}`)
+
+      return NextResponse.json(result)
+    } catch (apiError) {
+      clearTimeout(timeoutId)
+
+      if ((apiError as any).name === "AbortError") {
+        console.error("Timeout na OpenAI API")
+        return NextResponse.json({ error: "Timeout na geração. Tente novamente." }, { status: 408 })
+      }
+
+      throw apiError
+    }
   } catch (error) {
-    const processingTime = Date.now() - startTime
-    console.error("❌ [Contract V2] Erro ao gerar contrato:", error)
+    console.error("Erro ao gerar contrato V2:", error)
 
-    // ✅ CORREÇÃO: Tratamento de erro melhorado
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        {
-          error: "Dados de entrada inválidos",
-          details: error.errors,
-          processingTime,
-        },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "Dados inválidos", details: error.errors }, { status: 400 })
     }
 
-    if (error instanceof SyntaxError) {
-      return NextResponse.json(
-        {
-          error: "Formato JSON inválido",
-          message: "Verifique se os dados estão no formato correto",
-          processingTime,
-        },
-        { status: 400 },
-      )
+    // CORREÇÃO: Tratamento de erro mais específico
+    if (error instanceof Error) {
+      if (error.message.includes("Timeout")) {
+        return NextResponse.json({ error: "Timeout na operação. Tente novamente." }, { status: 408 })
+      }
+
+      if (error.message.includes("API Key")) {
+        return NextResponse.json({ error: "Configuração da API inválida" }, { status: 500 })
+      }
     }
 
-    return NextResponse.json(
-      {
-        error: "Erro interno do servidor",
-        message: "Tente novamente em alguns instantes",
-        processingTime,
-      },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
   }
-}
-
-// ✅ CORREÇÃO: Adicionar método GET para health check
-export async function GET() {
-  return NextResponse.json({
-    status: "ok",
-    service: "Contract Generator V2",
-    version: "2.0.0",
-    timestamp: new Date().toISOString(),
-    cache: {
-      size: cache.size,
-      maxAge: CACHE_DURATION,
-    },
-    botDetection: {
-      activeIPs: botDetection.size,
-      blockedIPs: Array.from(botDetection.values()).filter((p) => p.isBlocked).length,
-    },
-  })
 }
