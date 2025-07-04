@@ -1,209 +1,244 @@
+import { z } from "zod"
 import { type NextRequest, NextResponse } from "next/server"
+import OpenAI from "openai"
 
-// ✅ BASE DE LEIS BRASILEIRAS ULTRA-ESPECÍFICAS
-const BRAZILIAN_LAWS = [
-  {
-    id: "clt_contrato_temporario",
-    title: "CLT - Contrato de Trabalho Temporário (Lei 6.019/74)",
-    description:
-      "Regula especificamente contratos temporários, prazo máximo, renovação, direitos do trabalhador temporário",
-    category: "trabalhista",
-    relevance: "alta",
-    exactTerms: ["contrato temporário", "trabalho temporário", "temporário", "lei 6019"],
-    relatedTerms: ["prazo determinado", "renovação", "trabalhador temporário"],
-  },
-  {
-    id: "clt_contrato_determinado",
-    title: "CLT - Contrato por Prazo Determinado (Art. 443)",
-    description: "Regula contratos com prazo determinado, condições, limites de renovação",
-    category: "trabalhista",
-    relevance: "alta",
-    exactTerms: ["prazo determinado", "contrato determinado", "art 443", "artigo 443"],
-    relatedTerms: ["prazo", "determinado", "renovação", "limite"],
-  },
-  {
-    id: "codigo_civil_contratos",
-    title: "Código Civil - Contratos (Arts. 421 a 480)",
-    description: "Regula formação, execução e extinção de contratos, boa-fé objetiva, função social",
-    category: "civil",
-    relevance: "alta",
-    exactTerms: ["código civil contratos", "art 421", "art 422", "boa-fé objetiva", "função social"],
-    relatedTerms: ["contrato", "obrigações", "prestação", "acordo"],
-  },
-  {
-    id: "cdc_contratos_consumo",
-    title: "CDC - Contratos de Consumo (Arts. 46 a 54)",
-    description: "Regula contratos entre fornecedor e consumidor, cláusulas abusivas, direito de arrependimento",
-    category: "consumidor",
-    relevance: "alta",
-    exactTerms: ["cdc contratos", "contrato consumo", "cláusulas abusivas", "direito arrependimento"],
-    relatedTerms: ["consumidor", "fornecedor", "produto", "serviço"],
-  },
-  {
-    id: "lei_locacao_comercial",
-    title: "Lei do Inquilinato - Locação Comercial (Arts. 51 a 57)",
-    description: "Regula especificamente locações comerciais, renovação compulsória, fundo de comércio",
-    category: "imobiliario",
-    relevance: "alta",
-    exactTerms: ["locação comercial", "inquilinato comercial", "renovação compulsória", "fundo comércio"],
-    relatedTerms: ["comercial", "ponto comercial", "estabelecimento"],
-  },
-  {
-    id: "lei_locacao_residencial",
-    title: "Lei do Inquilinato - Locação Residencial (Arts. 1 a 50)",
-    description: "Regula locações residenciais, garantias, reajustes, benfeitorias",
-    category: "imobiliario",
-    relevance: "alta",
-    exactTerms: ["locação residencial", "inquilinato residencial", "aluguel residencial"],
-    relatedTerms: ["residencial", "moradia", "habitação", "casa", "apartamento"],
-  },
-  {
-    id: "lei_prestacao_servicos",
-    title: "Lei de Prestação de Serviços (LC 116/03)",
-    description: "Regula prestação de serviços, ISS, responsabilidades profissionais",
-    category: "servicos",
-    relevance: "alta",
-    exactTerms: ["prestação serviços", "lei serviços", "lc 116", "iss"],
-    relatedTerms: ["serviços", "consultoria", "profissional", "técnico"],
-  },
-  {
-    id: "lgpd_tratamento_dados",
-    title: "LGPD - Tratamento de Dados Pessoais (Lei 13.709/18)",
-    description: "Regula tratamento de dados pessoais, consentimento, direitos do titular",
-    category: "dados",
-    relevance: "alta",
-    exactTerms: ["lgpd", "lei dados", "tratamento dados", "dados pessoais", "lei 13709"],
-    relatedTerms: ["privacidade", "consentimento", "proteção dados"],
-  },
-  {
-    id: "lei_franquia_empresarial",
-    title: "Lei de Franquia (Lei 8.955/94)",
-    description: "Regula sistema de franquias, COF, direitos e deveres de franqueador e franqueado",
-    category: "empresarial",
-    relevance: "média",
-    exactTerms: ["lei franquia", "franquia", "cof", "lei 8955", "franqueador", "franqueado"],
-    relatedTerms: ["sistema franquia", "marca", "royalties"],
-  },
-  {
-    id: "lei_sociedade_limitada",
-    title: "Código Civil - Sociedade Limitada (Arts. 1052 a 1087)",
-    description: "Regula constituição e funcionamento de sociedades limitadas, quotas, administração",
-    category: "empresarial",
-    relevance: "média",
-    exactTerms: ["sociedade limitada", "ltda", "quotas", "art 1052"],
-    relatedTerms: ["sociedade", "sócios", "empresa", "quotista"],
-  },
-]
+// ✅ INICIALIZAR OPENAI
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
 
-// ✅ RATE LIMITING
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
+// ✅ INTERFACE PARA RESULTADOS DE LEIS
+interface LawResult {
+  id: string
+  title: string
+  description: string
+  category: string
+  subcategory: string
+  article?: string
+  lawNumber?: string
+  relevance: "alta" | "média" | "baixa"
+  source: "openai" | "lexml"
+  articles?: Array<{
+    number: string
+    text: string
+    relevance: string
+  }>
+}
+
+// ✅ CACHE INTELIGENTE PARA LEIS
+const lawsCache = new Map<string, { laws: LawResult[]; timestamp: number }>()
+const CACHE_DURATION = 5 * 60 * 1000 // 5 minutos
+
+// ✅ RATE LIMITING BÁSICO
+const rateLimitMap = new Map<string, { count: number; timestamp: number }>()
+const RATE_LIMIT_WINDOW = 60 * 1000 // 1 minuto
+const RATE_LIMIT_MAX = 30 // 30 requisições por minuto
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now()
-  const windowMs = 60000 // 1 minuto
-  const maxRequests = 15 // 15 requests por minuto
+  const windowStart = now - RATE_LIMIT_WINDOW
 
-  const current = rateLimitMap.get(ip)
-
-  if (!current || now > current.resetTime) {
-    rateLimitMap.set(ip, { count: 1, resetTime: now + windowMs })
+  if (!rateLimitMap.has(ip)) {
+    rateLimitMap.set(ip, { count: 1, timestamp: now })
     return true
   }
 
-  if (current.count >= maxRequests) {
+  const clientData = rateLimitMap.get(ip)!
+  if (clientData.timestamp < windowStart) {
+    rateLimitMap.set(ip, { count: 1, timestamp: now })
+    return true
+  }
+
+  if (clientData.count >= RATE_LIMIT_MAX) {
     return false
   }
 
-  current.count++
+  clientData.count++
   return true
 }
 
-// ✅ BUSCA ULTRA-PRECISA E CIRÚRGICA
-function searchLaws(query: string) {
+// ✅ BUSCA INTELIGENTE DE LEIS VIA OPENAI - SISTEMA UNIVERSAL
+async function searchLawsWithOpenAI(query: string): Promise<LawResult[]> {
+  try {
+    console.log(`🔍 [OpenAI] Busca inteligente: "${query.substring(0, 50)}..."`)
+
+    if (!process.env.OPENAI_API_KEY) {
+      console.error("❌ [OpenAI] API Key não configurada")
+      return []
+    }
+
+    const systemPrompt = `
+Você é um ESPECIALISTA JURÍDICO UNIVERSAL com PhD em Direito e 30+ anos de experiência em TODAS as áreas jurídicas brasileiras.
+
+CONTEXTO DA CONSULTA: "${query}"
+
+INSTRUÇÕES PARA BUSCA INTELIGENTE:
+1. ANALISE o contexto específico da consulta
+2. IDENTIFIQUE a área jurídica predominante (civil, penal, trabalhista, tributário, administrativo, etc.)
+3. RETORNE leis com aplicação DIRETA e IMEDIATA ao contexto
+4. INCLUA artigos, parágrafos e incisos ESPECÍFICOS e APLICÁVEIS
+5. SEJA CIRÚRGICO - apenas leis ultra-relevantes
+6. MÁXIMO 5 leis de altíssima relevância
+
+ÁREAS JURÍDICAS - EXEMPLOS DE APLICAÇÃO:
+- DIREITO CIVIL: Código Civil, leis de locação, contratos, família
+- DIREITO PENAL: Código Penal, leis penais especiais, execução penal
+- DIREITO TRABALHISTA: CLT, leis trabalhistas, previdência
+- DIREITO TRIBUTÁRIO: CTN, leis tributárias específicas
+- DIREITO ADMINISTRATIVO: Leis administrativas, licitações, servidores
+- DIREITO PROCESSUAL: CPC, CPP, leis processuais
+- DIREITO CONSTITUCIONAL: Constituição Federal, leis constitucionais
+- DIREITO EMPRESARIAL: Lei das S.A., falência, propriedade industrial
+- DIREITO AMBIENTAL: Leis ambientais, licenciamento, crimes ambientais
+- DIREITO DIGITAL: LGPD, Marco Civil, crimes digitais
+
+PRECISÃO CONTEXTUAL:
+- Se sobre CONTRATOS PENAIS ou CRIMES → inclua Código Penal, leis penais especiais
+- Se sobre CONTRATOS CIVIS → inclua Código Civil, leis civis específicas
+- Se sobre CONTRATOS TRABALHISTAS → inclua CLT, leis trabalhistas
+- Se sobre CONTRATOS TRIBUTÁRIOS → inclua CTN, leis tributárias
+- Se sobre CONTRATOS ADMINISTRATIVOS → inclua leis administrativas
+- SEMPRE conecte leis ao contexto específico solicitado
+
+FORMATO JSON OBRIGATÓRIO:
+{
+  "laws": [
+    {
+      "id": "unique_id",
+      "title": "Nome completo da lei",
+      "description": "Aplicação específica no contexto solicitado",
+      "category": "área jurídica",
+      "subcategory": "subárea específica",
+      "article": "artigos principais aplicáveis",
+      "lawNumber": "número da lei",
+      "relevance": "alta",
+      "articles": [
+        {
+          "number": "Art. X",
+          "text": "Descrição do artigo",
+          "relevance": "aplicação no contexto"
+        }
+      ]
+    }
+  ]
+}
+
+VALIDAÇÃO FINAL: Cada lei deve ter aplicação IMEDIATA e DIRETA no contexto solicitado.
+
+Retorne APENAS o JSON válido:`
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o", // ✅ UPGRADE PARA GPT-4o - MODELO MAIS PODEROSO
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: query }
+      ],
+      temperature: 0.1, // ✅ REDUZIDO PARA MÁXIMA PRECISÃO JURÍDICA
+      max_tokens: 4000, // ✅ AUMENTADO PARA ARTIGOS MAIS DETALHADOS
+      response_format: { type: "json_object" }
+    })
+
+    const response = completion.choices[0]?.message?.content
+
+    if (!response) {
+      console.log("❌ [OpenAI] Resposta vazia")
+      return []
+    }
+
+    const parsedResponse = JSON.parse(response)
+    const laws = parsedResponse.laws || []
+
+    console.log(`✅ [OpenAI] ${laws.length} leis encontradas`)
+    
+    // Validar e sanitizar leis com artigos específicos
+    const validLaws = laws
+      .filter((law: any) => law.title && law.description && law.category)
+      .slice(0, 5) // Máximo 5 leis ultra-relevantes
+      .map((law: any, index: number) => ({
+        id: law.id || `law_${Date.now()}_${index}`,
+        title: law.title.substring(0, 250),
+        description: law.description.substring(0, 600),
+        category: law.category,
+        subcategory: law.subcategory || law.category,
+        article: law.article,
+        lawNumber: law.lawNumber,
+        relevance: law.relevance || "alta",
+        source: "openai",
+        articles: law.articles || [] // Incluir artigos específicos
+      }))
+
+    return validLaws
+
+  } catch (error) {
+    console.error("❌ [OpenAI] Erro na busca:", error)
+    return []
+  }
+}
+
+// ✅ BUSCA VIA LEXML (SISTEMA BACKUP)
+async function searchLawsWithLexML(query: string): Promise<LawResult[]> {
+  try {
+    console.log(`🔍 [LexML] Buscando leis para: "${query}"`)
+
+    // Implementação básica - pode ser melhorada com API real do LexML
+    const searchUrl = `https://www.lexml.gov.br/busca/search?q=${encodeURIComponent(query)}&formato=json`
+    
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'NexarIA Legal Search Bot 1.0'
+      }
+    })
+
+    if (!response.ok) {
+      console.log(`❌ [LexML] Erro HTTP: ${response.status}`)
+      return []
+    }
+
+    // Para agora, retornar array vazio - LexML precisa de implementação específica
+    console.log(`🔄 [LexML] Funcionalidade em desenvolvimento`)
+    return []
+
+  } catch (error) {
+    console.error("❌ [LexML] Erro na busca:", error)
+    return []
+  }
+}
+
+// ✅ FUNÇÃO PRINCIPAL DE BUSCA INTELIGENTE
+async function searchLaws(query: string): Promise<LawResult[]> {
   const queryLower = query.toLowerCase().trim()
 
   if (!queryLower || queryLower.length < 3) {
     return []
   }
 
-  console.log(`🔍 [Laws] Busca cirúrgica por: "${queryLower}"`)
-
-  const results = BRAZILIAN_LAWS.map((law) => {
-    let score = 0
-    const matchDetails = []
-
-    // ✅ 1. TERMOS EXATOS (peso máximo - 1000 pontos)
-    for (const exactTerm of law.exactTerms) {
-      if (queryLower === exactTerm) {
-        score += 1000
-        matchDetails.push(`EXATO: "${exactTerm}"`)
-        break
-      } else if (queryLower.includes(exactTerm) || exactTerm.includes(queryLower)) {
-        score += 500
-        matchDetails.push(`CONTÉM: "${exactTerm}"`)
-      }
-    }
-
-    // ✅ 2. TERMOS RELACIONADOS (peso médio - 200 pontos)
-    if (score === 0) {
-      // Só buscar relacionados se não encontrou exato
-      for (const relatedTerm of law.relatedTerms) {
-        if (queryLower.includes(relatedTerm) || relatedTerm.includes(queryLower)) {
-          score += 200
-          matchDetails.push(`RELACIONADO: "${relatedTerm}"`)
-        }
-      }
-    }
-
-    // ✅ 3. BUSCA POR PALAVRAS-CHAVE ESPECÍFICAS (peso baixo - 100 pontos)
-    if (score === 0) {
-      // Só se não encontrou nada ainda
-      const queryWords = queryLower.split(/\s+/).filter((word) => word.length >= 3)
-
-      for (const word of queryWords) {
-        // Buscar no título
-        if (law.title.toLowerCase().includes(word)) {
-          score += 100
-          matchDetails.push(`TÍTULO: "${word}"`)
-        }
-
-        // Buscar na descrição
-        if (law.description.toLowerCase().includes(word)) {
-          score += 50
-          matchDetails.push(`DESCRIÇÃO: "${word}"`)
-        }
-      }
-    }
-
-    // ✅ 4. BONUS POR RELEVÂNCIA (só se já tem score)
-    if (score > 0) {
-      if (law.relevance === "alta") {
-        score += 50
-      } else if (law.relevance === "média") {
-        score += 25
-      }
-    }
-
-    if (score > 0) {
-      console.log(`🎯 [Laws] "${law.title}" - Score: ${score} - Matches: ${matchDetails.join(", ")}`)
-    }
-
-    return { ...law, score, matchDetails }
-  })
-
-  // ✅ FILTRAR APENAS RESULTADOS RELEVANTES (score > 100)
-  const filteredResults = results
-    .filter((law) => law.score >= 100) // Só leis com score significativo
-    .sort((a, b) => b.score - a.score) // Ordenar por relevância
-    .slice(0, 5) // Máximo 5 leis
-
-  console.log(`✅ [Laws] ${filteredResults.length} leis específicas encontradas para "${queryLower}"`)
-
-  if (filteredResults.length === 0) {
-    console.log(`❌ [Laws] Nenhuma lei específica encontrada para "${queryLower}"`)
+  // Verificar cache
+  const cached = lawsCache.get(queryLower)
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    console.log(`💾 [Cache] Leis encontradas no cache para: "${queryLower}"`)
+    return cached.laws
   }
 
-  return filteredResults.map(({ score, matchDetails, ...law }) => law)
+  console.log(`🔍 [Laws] Busca inteligente iniciada para: "${queryLower}"`)
+
+  // Buscar via OpenAI primeiro
+  let laws = await searchLawsWithOpenAI(queryLower)
+
+  // Se OpenAI não retornou resultados suficientes, tentar LexML
+  if (laws.length < 3) {
+    console.log(`🔄 [Laws] Tentando LexML como backup...`)
+    const lexmlLaws = await searchLawsWithLexML(queryLower)
+    laws = [...laws, ...lexmlLaws].slice(0, 8)
+  }
+
+  // Salvar no cache
+  if (laws.length > 0) {
+    lawsCache.set(queryLower, { laws, timestamp: Date.now() })
+  }
+
+  console.log(`✅ [Laws] ${laws.length} leis específicas encontradas para "${queryLower}"`)
+
+  return laws
 }
 
 export async function POST(request: NextRequest) {
@@ -228,14 +263,26 @@ export async function POST(request: NextRequest) {
         success: true,
         laws: [],
         message:
-          "Digite pelo menos 3 caracteres para buscar leis específicas (ex: 'contrato temporário', 'locação comercial', 'lgpd')",
+          "Digite pelo menos 3 caracteres para buscar leis específicas (ex: 'contrato penal', 'direito trabalhista', 'crime digital', 'locação residencial')",
       })
     }
 
-    console.log(`🔍 [Laws] Busca específica por: "${observacoes.substring(0, 100)}..."`)
+    // Verificar se OpenAI está configurado
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "OpenAI não configurado",
+          message: "Chave da API OpenAI não encontrada. Configure OPENAI_API_KEY no .env.local",
+        },
+        { status: 500 },
+      )
+    }
 
-    // Buscar leis com precisão cirúrgica
-    const laws = searchLaws(observacoes)
+    console.log(`🔍 [Laws] Busca universal por: "${observacoes.substring(0, 100)}..."`)
+
+    // Buscar leis com sistema inteligente
+    const laws = await searchLaws(observacoes)
 
     if (laws.length === 0) {
       console.log(`❌ [Laws] Nenhuma lei específica encontrada para: "${observacoes}"`)
@@ -243,7 +290,7 @@ export async function POST(request: NextRequest) {
         success: true,
         laws: [],
         message:
-          "Nenhuma lei específica encontrada. Tente termos mais específicos como 'contrato temporário', 'locação comercial', 'lgpd', etc.",
+          "Nenhuma lei específica encontrada. Tente termos mais específicos como 'direito penal', 'crime digital', 'contrato trabalho', 'direito tributário', etc.",
       })
     }
 
@@ -253,7 +300,8 @@ export async function POST(request: NextRequest) {
       success: true,
       laws,
       type: "laws_selection",
-      message: `${laws.length} lei(s) específica(s) encontrada(s) para sua consulta`,
+      message: `${laws.length} lei(s) específica(s) encontrada(s) via busca inteligente GPT-4o`,
+      searchMethod: laws[0]?.source || "openai"
     })
   } catch (error) {
     console.error("❌ [Laws] Erro ao buscar leis:", error)
@@ -262,20 +310,18 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: "Erro interno",
-        message: "Erro ao buscar leis. Tente novamente.",
+        message: "Erro ao buscar leis. Verifique sua conexão e tente novamente.",
       },
       { status: 500 },
     )
   }
 }
 
-// Health check
 export async function GET() {
   return NextResponse.json({
-    status: "ok",
-    service: "AI Law Suggestion - Ultra Precise",
-    laws_count: BRAZILIAN_LAWS.length,
-    precision: "cirúrgica",
-    timestamp: new Date().toISOString(),
+    message: "API de sugestões de leis ativa",
+    version: "2.0",
+    model: "GPT-4o",
+    features: ["Busca inteligente", "Cache otimizado", "Rate limiting", "Suporte universal"]
   })
 }

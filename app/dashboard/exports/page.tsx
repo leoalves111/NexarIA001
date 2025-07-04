@@ -98,18 +98,56 @@ export default function ExportsPage() {
     const printWindow = window.open("", "_blank")
     if (!printWindow) return
 
+    const cleanHtml = contract.html.replace(/`html/g, '').replace(/```/g, '')
+
     printWindow.document.write(`
      <!DOCTYPE html>
      <html>
        <head>
          <title>${contract.titulo}</title>
          <style>
-           body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
-           @media print { body { margin: 0; } }
+           @page {
+             size: A4;
+             margin: 2cm;
+           }
+           body { 
+             font-family: 'Times New Roman', serif; 
+             margin: 0; 
+             padding: 0;
+             line-height: 1.6; 
+             font-size: 12pt;
+             color: #000;
+             background: white;
+           }
+           .contract-container {
+             padding: 0;
+             margin: 0;
+           }
+           .clause-title {
+             page-break-after: avoid;
+             break-after: avoid;
+             margin-top: 20pt;
+             margin-bottom: 10pt;
+           }
+           .clause-content {
+             page-break-inside: avoid;
+             break-inside: avoid;
+             margin-bottom: 15pt;
+           }
+           .signatures {
+             page-break-before: avoid;
+             break-before: avoid;
+           }
+           .ai-generated {
+             display: none !important;
+           }
+           @media print { 
+             body { margin: 0; padding: 0; }
+           }
          </style>
        </head>
        <body>
-         ${contract.html}
+         ${cleanHtml}
          <script>
            window.onload = function() {
              window.print();

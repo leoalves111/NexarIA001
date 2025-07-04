@@ -19,14 +19,26 @@ const PersonSchema = z.object({
 
 const ContractSchema = z.object({
   titulo: z.string().min(3, "Título deve ter pelo menos 3 caracteres").max(200, "Título muito longo"),
-  tipo: z.enum(['servicos', 'trabalho', 'locacao', 'compra_venda', 'consultoria'], {
-    errorMap: () => ({ message: "Tipo de contrato inválido. Use: servicos, trabalho, locacao, compra_venda ou consultoria" })
+  tipo: z.enum([
+    'servicos', 'trabalho', 'locacao', 'compra_venda', 'consultoria', 
+    'prestacao_servicos', 'fornecimento', 'sociedade', 'parceria', 
+    'franquia', 'licenciamento', 'manutencao', 'seguro', 
+    'financiamento', 'outros'
+  ], {
+    errorMap: () => ({ message: "Tipo de contrato inválido" })
   }),
+  tipoPersonalizado: z.string().optional(), // Para quando tipo for "outros"
   prompt: z.string().min(20, "PROMPT deve ter pelo menos 20 caracteres").max(3000, "PROMPT muito longo"),
   valor: z.string().min(1, "Valor é obrigatório").max(50, "Valor muito longo"),
   prazo: z.string().min(1, "Prazo é obrigatório").max(100, "Prazo muito longo"),
   observacoes: z.string().max(1000, "Observações muito longas").optional(),
-  template: z.string().optional() // Template visual escolhido
+  template: z.string().optional(), // Template visual escolhido
+  leisSelecionadas: z.array(z.object({
+    text: z.string(),
+    description: z.string(),
+    category: z.string().optional(),
+    context: z.string().optional()
+  })).optional() // Campo para leis selecionadas via OpenAI
 })
 
 const GenerateContractV2Schema = z.object({
@@ -377,12 +389,52 @@ const generateStructuredContract = (data: z.infer<typeof GenerateContractV2Schem
         }
         
         @media print {
-            body { margin: 0; padding: 0; }
+            @page {
+                size: A4;
+                margin: 2cm;
+            }
+            
+            body { 
+                margin: 0; 
+                padding: 0;
+                font-size: 12pt;
+                line-height: 1.4;
+                color: #000 !important;
+                background: white !important;
+            }
+            
             .contract-container { 
                 max-width: none;
                 margin: 0;
-                padding: 15px;
+                padding: 0;
                 box-shadow: none;
+                page-break-inside: avoid;
+            }
+            
+            .contract-header {
+                page-break-after: avoid;
+                break-after: avoid;
+            }
+            
+            .clause-title {
+                page-break-after: avoid;
+                break-after: avoid;
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+            
+            .clause-content {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+            
+            .signatures {
+                page-break-before: avoid;
+                break-before: avoid;
+            }
+            
+            .ai-generated {
+                display: none !important;
             }
         }
     </style>
@@ -400,7 +452,7 @@ const generateStructuredContract = (data: z.infer<typeof GenerateContractV2Schem
                 residente e domiciliado(a) em ${contratante.endereco}, ${contratante.cidade}/${contratante.estado}
                 ${contratante.email ? `, e-mail: ${contratante.email}` : ''}
                 ${contratante.telefone ? `, telefone: ${contratante.telefone}` : ''}, 
-                doravante denominado(a) <strong>CONTRATANTE</strong>.
+                doravante denominado(a) <strong>${contratanteLabel}</strong>.
             </div>
             
             <div class="party-info">
@@ -408,7 +460,7 @@ const generateStructuredContract = (data: z.infer<typeof GenerateContractV2Schem
                 residente e domiciliado(a) em ${contratada.endereco}, ${contratada.cidade}/${contratada.estado}
                 ${contratada.email ? `, e-mail: ${contratada.email}` : ''}
                 ${contratada.telefone ? `, telefone: ${contratada.telefone}` : ''}, 
-                doravante denominado(a) <strong>CONTRATADA</strong>.
+                doravante denominado(a) <strong>${contratadaLabel}</strong>.
             </div>
             
             <p style="margin-top: 25px; text-align: justify;">
@@ -784,7 +836,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Prompt para OpenAI
-    const systemPrompt = `Você é um especialista em direito contratual brasileiro. Gere um contrato profissional completo seguindo estas diretrizes RIGOROSAS:
+    // Construir lista de leis selecionadas
+    let leisEspecificas = ''
+    if (validatedData.contrato.leisSelecionadas && validatedData.contrato.leisSelecionadas.length > 0) {
+      leisEspecificas = `
+
+LEIS ESPECÍFICAS SOLICITADAS PELO USUÁRIO (DEVE USAR OBRIGATORIAMENTE):
+${validatedData.contrato.leisSelecionadas.map((lei, index) => 
+  `${index + 1}. ${lei.text}
+     Descrição: ${lei.description}
+     ${lei.context ? `Contexto: ${lei.context}` : ''}
+     ${lei.category ? `Categoria: ${lei.category}` : ''}`
+).join('\n\n')}
+
+INSTRUÇÕES CRÍTICAS SOBRE AS LEIS:
+- Você DEVE fundamentar o contrato especificamente nestas leis acima
+- Cite os artigos, números de lei e dispositivos específicos
+- Inclua pelo menos uma cláusula detalhada para CADA lei listada
+- Use a nomenclatura exata das leis fornecidas
+- Demonstre conformidade legal explícita com cada dispositivo
+`
+    }
+
+    const systemPrompt = `Você é um ESPECIALISTA JURÍDICO SÊNIOR em Direito Contratual Brasileiro com mais de 20 anos de experiência. Sua expertise inclui todas as áreas do direito brasileiro: civil, trabalhista, empresarial, consumidor${leisEspecificas}, tributário, imobiliário, dados pessoais (LGPD), e regulamentações específicas.
+
+MISSÃO: Gerar um contrato PROFISSIONAL, COMPLETO e JURIDICAMENTE ROBUSTO seguindo as mais altas práticas jurídicas brasileiras.
+
+🏛️ DIRETRIZES JURÍDICAS RIGOROSAS:
 
 TIPO DE CONTRATO: ${contrato.tipo}
 TAMANHO: ${tamanhoContrato}
@@ -807,9 +885,11 @@ INSTRUÇÕES OBRIGATÓRIAS:
 6. Use HTML semântico correto com classes CSS
 7. Inclua espaços para assinaturas lado a lado no final
 
-VALOR DO CONTRATO: ${contrato.valor || 'A combinar'}
-PRAZO: ${contrato.prazo || 'A definir'}
-OBSERVAÇÕES ESPECIAIS: ${contrato.observacoes || 'Nenhuma'}
+💰 **VALOR CONTRATUAL**: R$ ${contrato.valor || 'A ser especificado pelas partes'}
+⏰ **PRAZO CONTRATUAL**: ${contrato.prazo || 'Conforme especificado nas cláusulas contratuais'}
+📝 **OBSERVAÇÕES E REQUISITOS ESPECIAIS**: ${contrato.observacoes || 'Nenhuma observação adicional'}
+
+⚖️ **BASE JURÍDICA**: Aplicar rigorosamente a legislação brasileira específica para ${contrato.tipo}, incluindo todas as normativas federais, estaduais e municipais pertinentes
 
 ESTRUTURA OBRIGATÓRIA:
 - Título do contrato
@@ -824,7 +904,7 @@ ESTRUTURA OBRIGATÓRIA:
 - Local e data para assinatura
 - Campos de assinatura lado a lado
 
-FORMATO DE SAÍDA: HTML puro com classes CSS para estilização.`
+FORMATO DE SAÍDA: Retorne apenas as cláusulas do contrato em HTML limpo, sem marcações de código.`
 
     const userPrompt = `PROMPT DO USUÁRIO: ${contrato.prompt}
 
@@ -836,13 +916,13 @@ Gere um contrato ${tamanhoContrato} de ${contrato.tipo} seguindo exatamente as i
 
     try {
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-4o", // ✅ UPGRADE PARA GPT-4o - MODELO MAIS PODEROSO
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ],
-        max_tokens: tamanhoContrato === 'resumido' ? 1800 : tamanhoContrato === 'completo' ? 3500 : 2500,
-        temperature: 0.2,
+        max_tokens: tamanhoContrato === 'resumido' ? 8000 : tamanhoContrato === 'completo' ? 16000 : 12000, // ✅ AUMENTADO PARA GPT-4o
+        temperature: 0.1, // ✅ REDUZIDO PARA MÁXIMA PRECISÃO JURÍDICA
       }, {
         signal: controller.signal
       })

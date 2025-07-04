@@ -40,7 +40,7 @@ export function useSavedContracts() {
   const checkSupabaseAvailability = async () => {
     try {
       if (!supabase) {
-        console.log("Supabase não configurado, usando localStorage")
+        console.log("🚫 [Supabase] Não configurado, usando localStorage")
         return false
       }
 
@@ -48,14 +48,21 @@ export function useSavedContracts() {
       const { error } = await supabase.from("saved_contracts").select("id").limit(1)
 
       if (error) {
-        console.log("Tabela saved_contracts não existe, usando localStorage:", error.message)
+        console.log("⚠️ [Supabase] Tabela saved_contracts não existe:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        })
         return false
       }
 
-      console.log("Supabase disponível e tabela existe")
+      console.log("✅ [Supabase] Disponível e tabela existe")
       return true
-    } catch (error) {
-      console.log("Erro ao verificar Supabase, usando localStorage:", error)
+    } catch (error: any) {
+      console.log("❌ [Supabase] Erro ao verificar:", {
+        message: error?.message || 'Erro desconhecido',
+        error: error
+      })
       return false
     }
   }
@@ -141,6 +148,8 @@ export function useSavedContracts() {
 
   // Função para salvar um novo contrato
   const saveContract = async (contract: Omit<SavedContract, "id" | "dataGeracao" | "dataModificacao">) => {
+    console.log("🔄 [SaveContract] Iniciando salvamento do contrato:", contract.titulo)
+    
     const newContract: SavedContract = {
       ...contract,
       id: Date.now().toString(),
@@ -149,37 +158,78 @@ export function useSavedContracts() {
       nomePersonalizado: contract.nomePersonalizado || `Gerado ${savedContracts.length + 1}`,
     }
 
+    // Sempre salvar no localStorage primeiro como backup
+    const updatedContracts = [newContract, ...savedContracts]
+    saveToLocalStorage(updatedContracts)
+    console.log("✅ [SaveContract] Salvo no localStorage como backup")
+
+    // Tentar salvar no Supabase se disponível
     if (useSupabase && supabase) {
       try {
-        // Criar objeto para Supabase excluindo campos incompatíveis
+        console.log("🔄 [SaveContract] Tentando salvar no Supabase...")
+        
+        // Verificar se a tabela existe antes de tentar inserir
+        const { data: tableCheck, error: tableError } = await supabase
+          .from("saved_contracts")
+          .select("id")
+          .limit(1)
+
+        if (tableError) {
+          console.warn("⚠️ [SaveContract] Tabela não existe ou erro de acesso:", tableError.message)
+          console.log("📦 [SaveContract] Usando apenas localStorage")
+          return newContract.id
+        }
+
+        // Criar objeto para Supabase com validação
         const { dataGeracao, dataModificacao, ...contractWithoutDates } = newContract
         const supabaseContract = {
           ...contractWithoutDates,
           created_at: dataGeracao,
           updated_at: dataModificacao,
+          // Garantir que campos obrigatórios não sejam undefined
+          titulo: contractWithoutDates.titulo || 'Contrato sem título',
+          tipo: contractWithoutDates.tipo || 'outros',
+          tamanho: contractWithoutDates.tamanho || 'normal',
+          html: contractWithoutDates.html || '',
+          valor: contractWithoutDates.valor || 'Não informado',
+          contratante: contractWithoutDates.contratante || { nome: '', documento: '', endereco: '', tipo: 'pf' },
+          contratada: contractWithoutDates.contratada || { nome: '', documento: '', endereco: '', tipo: 'pf' }
         }
 
-        const { error } = await supabase.from("saved_contracts").insert([supabaseContract])
+        console.log("📤 [SaveContract] Enviando para Supabase:", {
+          id: supabaseContract.id,
+          titulo: supabaseContract.titulo,
+          tipo: supabaseContract.tipo
+        })
+
+        const { data, error } = await supabase
+          .from("saved_contracts")
+          .insert([supabaseContract])
+          .select()
 
         if (error) {
-          console.error("Erro ao salvar no Supabase:", error)
-          // Fallback para localStorage
-          const updatedContracts = [newContract, ...savedContracts]
-          saveToLocalStorage(updatedContracts)
+          console.error("❌ [SaveContract] Erro detalhado do Supabase:", {
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code
+          })
+          console.log("📦 [SaveContract] Mantendo salvamento no localStorage")
         } else {
+          console.log("✅ [SaveContract] Salvo com sucesso no Supabase:", data)
+          // Recarregar para sincronizar
           await loadContracts()
-          console.log("Contrato salvo no Supabase")
         }
-      } catch (error) {
-        console.error("Erro ao salvar no Supabase:", error)
-        const updatedContracts = [newContract, ...savedContracts]
-        saveToLocalStorage(updatedContracts)
+      } catch (error: any) {
+        console.error("❌ [SaveContract] Erro de execução:", {
+          message: error?.message || 'Erro desconhecido',
+          stack: error?.stack || 'Stack não disponível',
+          error: error
+        })
+        console.log("📦 [SaveContract] Mantendo salvamento no localStorage")
       }
     } else {
-      // Usar localStorage
-      const updatedContracts = [newContract, ...savedContracts]
-      saveToLocalStorage(updatedContracts)
-      console.log("Contrato salvo no localStorage")
+      console.log("📦 [SaveContract] Supabase não disponível, usando localStorage")
     }
 
     return newContract.id

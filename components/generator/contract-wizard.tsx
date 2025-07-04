@@ -55,6 +55,11 @@ interface Law {
   description: string
   category: string
   relevance: string
+  articles?: Array<{
+    number: string
+    text: string
+    relevance: string
+  }>
 }
 
 interface ContractWizardProps {
@@ -65,6 +70,8 @@ interface ContractWizardProps {
   loadingLaws: boolean
   onSearchLaws: (observacoes: string) => void
   onToggleLaw: (law: Law) => void
+  initialTemplate?: string
+  initialType?: string
 }
 
 const INITIAL_PERSON_DATA: PersonData = {
@@ -964,31 +971,57 @@ const ReviewForm = ({ data, selectedLaws }: ReviewFormProps) => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div className="space-y-4">
               {selectedLaws.map((law) => (
-                <div key={law.id} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex items-start justify-between">
+                <div key={law.id} className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm">{law.title}</span>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="font-semibold text-sm text-gray-900">{law.title}</span>
                         <Badge 
                           variant={law.relevance === 'alta' ? 'default' : law.relevance === 'média' ? 'secondary' : 'outline'}
                           className="text-xs"
                         >
                           {law.relevance}
                         </Badge>
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800">
                           {law.category}
                         </Badge>
                       </div>
-                      <p className="text-xs text-gray-600">{law.description}</p>
+                      <p className="text-xs text-gray-600 mb-3">{law.description}</p>
+                      
+                      {/* Artigos Específicos */}
+                      {law.articles && law.articles.length > 0 && (
+                        <div className="mt-3 p-3 bg-white rounded border border-gray-200">
+                          <h5 className="text-xs font-semibold text-gray-700 mb-2 flex items-center">
+                            <FileText className="h-3 w-3 mr-1" />
+                            Artigos Específicos que serão citados:
+                          </h5>
+                          <div className="space-y-2">
+                            {law.articles.map((article, index) => (
+                              <div key={index} className="text-xs border-l-2 border-blue-200 pl-2">
+                                <span className="font-medium text-blue-700">{article.number}:</span>
+                                <span className="text-gray-600 ml-1">{article.text.substring(0, 120)}...</span>
+                                <div className="text-gray-500 italic text-xs mt-1">
+                                  → {article.relevance}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <CheckCircle className="w-5 h-5 text-blue-500 ml-2" />
+                    <CheckCircle className="w-5 h-5 text-blue-500 ml-3 flex-shrink-0" />
                   </div>
                 </div>
               ))}
-              <div className="text-xs text-green-700 bg-green-50 p-2 rounded border border-green-200">
-                ✅ Essas leis serão aplicadas automaticamente no contrato junto com o seu prompt.
+              <div className="text-xs text-green-700 bg-green-50 p-3 rounded border border-green-200">
+                <div className="flex items-center gap-2 mb-1">
+                  <CheckCircle className="h-4 w-4" />
+                  <span className="font-semibold">Aplicação Automática Garantida</span>
+                </div>
+                <p>✅ Estas {selectedLaws.length} lei(s) serão aplicadas no contrato com artigos específicos citados</p>
+                <p className="mt-1">⚖️ Garante máxima segurança jurídica e conformidade legal</p>
               </div>
             </div>
           </CardContent>
@@ -1006,15 +1039,35 @@ export default function ContractWizard({
   selectedLaws, 
   loadingLaws, 
   onSearchLaws, 
-  onToggleLaw 
+  onToggleLaw,
+  initialTemplate,
+  initialType
 }: ContractWizardProps) {
   const { toast } = useToast()
   const [currentStep, setCurrentStep] = useState(1)
   const [data, setData] = useState<WizardData>({
     contratante: { ...INITIAL_PERSON_DATA },
     contratada: { ...INITIAL_PERSON_DATA },
-    contrato: { ...INITIAL_CONTRACT_DATA }
+    contrato: { 
+      ...INITIAL_CONTRACT_DATA,
+      template: initialTemplate || 'professional',
+      tipo: (initialType as any) || 'servicos'
+    }
   })
+  
+  // Efeito para aplicar valores iniciais vindos da URL
+  useEffect(() => {
+    if (initialTemplate || initialType) {
+      setData(prev => ({
+        ...prev,
+        contrato: {
+          ...prev.contrato,
+          template: initialTemplate || prev.contrato.template,
+          tipo: (initialType as any) || prev.contrato.tipo
+        }
+      }))
+    }
+  }, [initialTemplate, initialType])
 
   const steps = [
     { id: 1, title: "Contratante", icon: Building2 },

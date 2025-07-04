@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAuth } from "@/hooks/useAuth"
 import { useToast } from "@/hooks/use-toast"
 import { useSavedContracts } from "@/hooks/use-saved-contracts"
@@ -364,6 +364,28 @@ export default function GeneratorPage() {
   const [suggestedLaws, setSuggestedLaws] = useState<Law[]>([])
   const [selectedLaws, setSelectedLaws] = useState<Law[]>([])
   const [loadingLaws, setLoadingLaws] = useState(false)
+  
+  // Leitura dos parâmetros da URL para pré-seleção
+  const [urlParams, setUrlParams] = useState<{template?: string, type?: string}>({})
+  
+  useEffect(() => {
+    // Ler parâmetros da URL apenas no cliente
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search)
+      const template = searchParams.get('template')
+      const type = searchParams.get('type')
+      
+      if (template || type) {
+        setUrlParams({ template: template || undefined, type: type || undefined })
+        
+        toast({
+          title: "🎨 Template Selecionado!",
+          description: `Template ${template || 'padrão'} ${type ? `para ${type}` : ''} pré-selecionado.`,
+          duration: 3000
+        })
+      }
+    }
+  }, [])
 
   // ✅ VERIFICAÇÃO BÁSICA APENAS PARA UI (não para controle de acesso)  
   const hasCredits = subscription && subscription.creditos_avancados > 0
@@ -372,37 +394,82 @@ export default function GeneratorPage() {
   const detectContractSize = (prompt: string): "resumido" | "normal" | "completo" => {
     const promptLower = prompt.toLowerCase()
     
-    if (promptLower.includes("resumido") || promptLower.includes("resumo") || promptLower.includes("básico") || promptLower.includes("simples")) {
-      return "resumido"
-    } else if (promptLower.includes("completo") || promptLower.includes("detalhado") || promptLower.includes("extenso") || promptLower.includes("2 páginas") || promptLower.includes("duas páginas")) {
-      return "completo"
+    // ✅ PADRÃO: SEMPRE COMPLETO (exceto se usuário especificar diferente)
+    if (promptLower.includes('resumido') || promptLower.includes('básico') || 
+        promptLower.includes('simples') || promptLower.includes('rápido') ||
+        promptLower.includes('mínimo') || promptLower.includes('curto')) {
+      return 'resumido'
+    } 
+    
+    if (promptLower.includes('normal') || promptLower.includes('médio') || 
+        promptLower.includes('padrão') || promptLower.includes('intermediário')) {
+      return 'normal'
     }
     
-    return "normal"
+    // ✅ PADRÃO: SEMPRE COMPLETO para máxima segurança jurídica
+    // Inclui também: mega completo, super completo, extenso, detalhado, etc.
+    return 'completo'
   }
 
   // Função utilitária para construir HTML final do contrato
   const buildFinalContract = async (wizardData: WizardData, aiClauses: string, template: string = 'modern-executive'): Promise<string> => {
     const { contratante, contratada, contrato } = wizardData
     
-    // Definir labels corretos baseado no tipo
-    const contratanteLabel = contratante.tipo === 'pf' ? 'CONTRATANTE (Pessoa Física)' : 'CONTRATANTE (Empresa)'
-    const contratadaLabel = contratada.tipo === 'pf' ? 'CONTRATADO(A) (Pessoa Física)' : 'CONTRATADO(A) (Empresa)'
-    
-    const contratanteDoc = contratante.tipo === 'pf' ? `CPF nº ${contratante.documento}` : `CNPJ nº ${contratante.documento}`
-    const contratadaDoc = contratada.tipo === 'pf' ? `CPF nº ${contratada.documento}` : `CNPJ nº ${contratada.documento}`
+    // ✅ SISTEMA INTELIGENTE - Auto-ajuste de papéis por tipo de contrato
+    const getRolesForContractType = (tipo: string) => {
+      const roleMap: Record<string, { primary: string, secondary: string }> = {
+        'locacao': { primary: 'LOCADOR(A)', secondary: 'LOCATÁRIO(A)' },
+        'trabalho': { primary: 'EMPREGADOR(A)', secondary: 'EMPREGADO(A)' },
+        'servicos': { primary: 'CONTRATANTE', secondary: 'PRESTADOR(A) DE SERVIÇOS' },
+        'compra_venda': { primary: 'VENDEDOR(A)', secondary: 'COMPRADOR(A)' },
+        'consultoria': { primary: 'CONTRATANTE', secondary: 'CONSULTOR(A)' },
+        'prestacao_servicos': { primary: 'CONTRATANTE', secondary: 'PRESTADOR(A)' },
+        'fornecimento': { primary: 'CONTRATANTE', secondary: 'FORNECEDOR(A)' },
+        'sociedade': { primary: 'SÓCIO(A) MAJORITÁRIO(A)', secondary: 'SÓCIO(A) MINORITÁRIO(A)' },
+        'parceria': { primary: 'PARCEIRO(A) PRINCIPAL', secondary: 'PARCEIRO(A) ASSOCIADO(A)' },
+        'franquia': { primary: 'FRANQUEADOR(A)', secondary: 'FRANQUEADO(A)' },
+        'licenciamento': { primary: 'LICENCIANTE', secondary: 'LICENCIADO(A)' },
+        'manutencao': { primary: 'CONTRATANTE', secondary: 'PRESTADOR(A) DE MANUTENÇÃO' },
+        'seguro': { primary: 'SEGURADO(A)', secondary: 'SEGURADORA' },
+        'financiamento': { primary: 'FINANCIADOR(A)', secondary: 'FINANCIADO(A)' },
+        'outros': { primary: 'CONTRATANTE', secondary: 'CONTRATADA' }
+      }
+      return roleMap[tipo] || roleMap['outros']
+    }
 
-    const dataAtual = new Date().toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric"
-    })
+    // ✅ TERMINOLOGIA INTELIGENTE - Auto-ajuste para PF/PJ
+    const getTerminologyForPersonType = (tipo: 'pf' | 'pj'): string => {
+      return tipo === 'pf' ? 'residente e domiciliado(a)' : 'com sede'
+    }
 
-    // Aplicar estilo baseado no template selecionado
+    // ✅ LÓGICA INTELIGENTE - Determinar qual parte tem qual papel
+    const roles = getRolesForContractType(contrato.tipo)
+    let primaryParty = contratante
+    let secondaryParty = contratada
+    let primaryRole = roles.primary
+    let secondaryRole = roles.secondary
+
+    // Auto-ajuste inteligente baseado no contexto
+    // Para locação: PJ geralmente é locador, PF é locatário
+    if (contrato.tipo === 'locacao' && contratante.tipo === 'pf' && contratada.tipo === 'pj') {
+      primaryParty = contratada
+      secondaryParty = contratante
+    }
+    // Para trabalho: PJ é empregador, PF é empregado
+    else if (contrato.tipo === 'trabalho' && contratante.tipo === 'pf' && contratada.tipo === 'pj') {
+      primaryParty = contratada
+      secondaryParty = contratante
+    }
+    // Para fornecimento: PJ geralmente é fornecedor
+    else if (contrato.tipo === 'fornecimento' && contratante.tipo === 'pf' && contratada.tipo === 'pj') {
+      primaryParty = contratada
+      secondaryParty = contratante
+    }
+
     const templateStyles = getTemplateStyles(template)
     
-    // Construir HTML completo
-    return `<!DOCTYPE html>
+    return `
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -410,93 +477,42 @@ export default function GeneratorPage() {
     <title>${contrato.titulo}</title>
     <style>
         ${templateStyles}
-        .parties-intro {
-            margin: 30px 0;
-            text-align: justify;
-            font-size: 14px;
-            line-height: 1.7;
-            padding: 25px;
-            border-radius: 12px;
-            border: 2px solid #e5e7eb;
-        }
-        
-        .party-info {
-            font-weight: bold;
-            margin: 15px 0;
-            padding: 12px;
-            border-radius: 6px;
-        }
-        
-        .signatures {
-            margin-top: 60px;
-            padding: 20px 0;
-            page-break-inside: avoid;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-        }
-        
-        .signature-block {
-            width: 45%;
-            text-align: center;
-            margin: 0;
-        }
-        
-        .signature-line {
-            border-top: 2px solid #666;
-            margin: 60px 0 15px 0;
-            padding-top: 10px;
-            font-size: 12px;
-            font-weight: bold;
-            min-height: 40px;
-        }
     </style>
 </head>
 <body>
     <div class="contract-container">
         <div class="contract-header">
-            <h1 class="contract-title">${contrato.titulo}</h1>
+            <h1 class="contract-title">${contrato.titulo.toUpperCase()}</h1>
         </div>
         
         <div class="parties-intro">
-            <div class="party-info">
-                <strong>${contratanteLabel}:</strong> ${contratante.nome}, ${contratanteDoc}, 
-                residente e domiciliado(a) em ${contratante.endereco}, ${contratante.cidade}/${contratante.estado}
-                ${contratante.email ? `, e-mail: ${contratante.email}` : ''}
-                ${contratante.telefone ? `, telefone: ${contratante.telefone}` : ''}, 
-                doravante denominado(a) <strong>CONTRATANTE</strong>.
-            </div>
+            <p><strong>${primaryRole}:</strong> ${primaryParty.nome}, ${primaryParty.tipo === 'pf' ? 'CPF' : 'CNPJ'} nº ${primaryParty.documento}, ${getTerminologyForPersonType(primaryParty.tipo)} em ${primaryParty.endereco}, ${primaryParty.cidade}/${primaryParty.estado}${primaryParty.telefone ? `, telefone: ${primaryParty.telefone}` : ''}${primaryParty.email ? `, e-mail: ${primaryParty.email}` : ''}, doravante denominado(a) <strong>${primaryRole}</strong>.</p>
             
-            <div class="party-info">
-                <strong>${contratadaLabel}:</strong> ${contratada.nome}, ${contratadaDoc}, 
-                residente e domiciliado(a) em ${contratada.endereco}, ${contratada.cidade}/${contratada.estado}
-                ${contratada.email ? `, e-mail: ${contratada.email}` : ''}
-                ${contratada.telefone ? `, telefone: ${contratada.telefone}` : ''}, 
-                doravante denominado(a) <strong>CONTRATADA</strong>.
-            </div>
+            <p><strong>${secondaryRole}:</strong> ${secondaryParty.nome}, ${secondaryParty.tipo === 'pf' ? 'CPF' : 'CNPJ'} nº ${secondaryParty.documento}, ${getTerminologyForPersonType(secondaryParty.tipo)} em ${secondaryParty.endereco}, ${secondaryParty.cidade}/${secondaryParty.estado}${secondaryParty.telefone ? `, telefone: ${secondaryParty.telefone}` : ''}${secondaryParty.email ? `, e-mail: ${secondaryParty.email}` : ''}, doravante denominado(a) <strong>${secondaryRole}</strong>.</p>
             
-            <p style="margin-top: 25px; text-align: justify;">
-                As partes acima identificadas têm, entre si, justo e acordado o presente 
-                <span class="value-highlight">${contrato.titulo}</span>, que se regerá pelas cláusulas e condições seguintes:
-            </p>
-        </div>
-
-        ${aiClauses}
-
-        <div style="text-align: center; margin: 40px 0;">
-            <p style="font-size: 18px; font-weight: bold;">${contratante.cidade}, ${dataAtual}.</p>
-        </div>
-
-        <div class="signatures">
-            <div class="signature-block">
-                <div class="signature-line">${contratante.nome}<br>CONTRATANTE</div>
-            </div>
-            <div class="signature-block">
-                <div class="signature-line">${contratada.nome}<br>CONTRATADA</div>
-            </div>
+            <p>As partes acima identificadas têm, entre si, justo e acordado o presente ${contrato.titulo}, que se regerá pelas cláusulas e condições seguintes:</p>
         </div>
         
-        <div class="ai-generated">
+        ${aiClauses}
+        
+        <div class="signature-section">
+            <p style="text-align: center; margin: 40px 0 60px 0; font-weight: bold;">
+                ${primaryParty.cidade}/${primaryParty.estado}, _____ de _____________ de _______.
+            </p>
+            
+            <div style="display: flex; justify-content: space-between; margin-top: 80px;">
+                <div style="text-align: center; width: 45%;">
+                    <div style="border-bottom: 1px solid #000; margin-bottom: 10px; height: 50px;"></div>
+                    <p style="margin: 0; font-weight: bold;">${primaryParty.nome}</p>
+                    <p style="margin: 0; font-size: 14px;">${primaryRole}</p>
+                </div>
+                
+                <div style="text-align: center; width: 45%;">
+                    <div style="border-bottom: 1px solid #000; margin-bottom: 10px; height: 50px;"></div>
+                    <p style="margin: 0; font-weight: bold;">${secondaryParty.nome}</p>
+                    <p style="margin: 0; font-size: 14px;">${secondaryRole}</p>
+                </div>
+            </div>
         </div>
     </div>
 </body>
@@ -602,28 +618,44 @@ export default function GeneratorPage() {
       // Montar prompt melhorado baseado no tamanho
       let enhancedPrompt = wizardData.contrato.prompt
       
+      // ✅ SEMPRE ADICIONAR INSTRUÇÕES PARA CONTRATOS SUPER COMPLETOS
+      enhancedPrompt += `\n\nINSTRUÇÕES ESPECÍFICAS PARA O SISTEMA:
+- Gere um contrato SUPER COMPLETO e PROFISSIONAL
+- Inclua TODAS as cláusulas necessárias para este tipo de contrato: ${wizardData.contrato.tipo}
+- Use leis específicas e precisas para o contexto
+- Cite artigos, incisos e parágrafos das leis aplicáveis
+- Inclua cláusulas de segurança jurídica (multa, rescisão, foro, etc.)
+- Linguagem jurídica formal e precisa
+- Mínimo de 15-20 cláusulas para máxima proteção jurídica
+- Use subcláusulas detalhadas quando necessário`
+      
       // Adicionar instruções de tamanho
       const sizeInstructions: Record<typeof contractSize, string> = {
-        resumido: "\n\nTAMANHO: Criar contrato RESUMIDO com cláusulas essenciais apenas (máximo 1 página, 5-7 cláusulas principais).",
-        normal: "\n\nTAMANHO: Criar contrato PADRÃO com cláusulas necessárias (1-1.5 páginas, 8-12 cláusulas).",
-        completo: "\n\nTAMANHO: Criar contrato COMPLETO e DETALHADO com todas as cláusulas possíveis (até 2 páginas, 12-18 cláusulas, incluindo cláusulas de garantia, multa, foro, disposições gerais)."
+        resumido: "\n\nTAMANHO SOLICITADO: Criar contrato RESUMIDO com cláusulas essenciais apenas (máximo 1 página, 5-8 cláusulas principais). Use apenas leis fundamentais para este tipo de contrato.",
+        normal: "\n\nTAMANHO SOLICITADO: Criar contrato PADRÃO com cláusulas necessárias (1-1.5 páginas, 10-15 cláusulas). Inclua leis específicas e artigos precisos para este tipo de contrato.",
+        completo: "\n\nTAMANHO SOLICITADO: Criar contrato SUPER COMPLETO e DETALHADO com MÁXIMA SEGURANÇA JURÍDICA (2-3 páginas, 15-25 cláusulas). OBRIGATÓRIO incluir: todas as cláusulas necessárias, subcláusulas detalhadas, leis específicas com artigos e incisos precisos, cláusulas de garantia, multa, rescisão, foro competente, disposições gerais e especiais. O contrato deve ser PROFISSIONAL e dar TOTAL TRANQUILIDADE ao usuário."
       }
       
       enhancedPrompt += sizeInstructions[contractSize]
       console.log(`📏 [Generator] Tamanho detectado: ${contractSize}`)
-      
-      if (selectedLaws.length > 0) {
-        const lawsText = selectedLaws.map(law => `${law.title}: ${law.description}`).join(". ")
-        enhancedPrompt += `\n\nLEIS ESPECÍFICAS A APLICAR: ${lawsText}`
-        console.log(`📚 [Generator] ${selectedLaws.length} leis adicionadas ao prompt`)
-      }
 
-      // Criar dados modificados com prompt melhorado
+      // Preparar leis selecionadas no formato correto para a API
+      const leisSelecionadas = selectedLaws.map(law => ({
+        text: law.title,
+        description: law.description,
+        category: law.category,
+        context: law.relevance
+      }))
+
+      console.log(`📚 [Generator] ${selectedLaws.length} leis enviadas no formato estruturado:`, leisSelecionadas)
+
+      // Criar dados modificados com prompt melhorado e leis estruturadas
       const enhancedWizardData = {
         ...wizardData,
         contrato: {
           ...wizardData.contrato,
-          prompt: enhancedPrompt
+          prompt: enhancedPrompt,
+          leisSelecionadas: leisSelecionadas // ✅ Campo estruturado para leis
         }
       }
 
@@ -751,17 +783,23 @@ export default function GeneratorPage() {
        await saveContract({
          titulo: wizardData.contrato.titulo,
          tipo: wizardData.contrato.tipo,
+         tipoPersonalizado: wizardData.contrato.tipoPersonalizado,
          html: finalHtml,
          tamanho: contractSize,
          contratante: {
            nome: wizardData.contratante.nome,
+           documento: wizardData.contratante.documento,
+           endereco: `${wizardData.contratante.endereco}, ${wizardData.contratante.cidade}/${wizardData.contratante.estado}`,
            tipo: wizardData.contratante.tipo
          },
          contratada: {
            nome: wizardData.contratada.nome,
+           documento: wizardData.contratada.documento,
+           endereco: `${wizardData.contratada.endereco}, ${wizardData.contratada.cidade}/${wizardData.contratada.estado}`,
            tipo: wizardData.contratada.tipo
          },
          valor: wizardData.contrato.valor,
+         prazo: wizardData.contrato.prazo,
          leisSelecionadas: selectedLaws.map(law => law.title)
        })
 
@@ -796,9 +834,61 @@ export default function GeneratorPage() {
       if (format === "pdf") {
         // Para PDF, abrir em nova janela para impressão
         const content = generatedContract.html || generatedContract.content || ''
+        const cleanContent = content.replace(/`html/g, '').replace(/```/g, '')
+        
         const pdfWindow = window.open("")
-        if (pdfWindow && content) {
-          pdfWindow.document.write(content)
+        if (pdfWindow && cleanContent) {
+          pdfWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>${generatedContract.data?.contrato.titulo || 'Contrato'}</title>
+                <style>
+                  @page {
+                    size: A4;
+                    margin: 2cm;
+                  }
+                  body { 
+                    font-family: 'Times New Roman', serif; 
+                    margin: 0; 
+                    padding: 0;
+                    line-height: 1.6; 
+                    font-size: 12pt;
+                    color: #000;
+                    background: white;
+                  }
+                  .contract-container {
+                    padding: 0;
+                    margin: 0;
+                  }
+                  .clause-title {
+                    page-break-after: avoid;
+                    break-after: avoid;
+                    margin-top: 20pt;
+                    margin-bottom: 10pt;
+                  }
+                  .clause-content {
+                    page-break-inside: avoid;
+                    break-inside: avoid;
+                    margin-bottom: 15pt;
+                  }
+                  .signatures {
+                    page-break-before: avoid;
+                    break-before: avoid;
+                  }
+                  .ai-generated {
+                    display: none !important;
+                  }
+                  @media print { 
+                    body { margin: 0; padding: 0; }
+                  }
+                </style>
+              </head>
+              <body>
+                ${cleanContent}
+              </body>
+            </html>
+          `)
           pdfWindow.document.close()
           setTimeout(() => {
             pdfWindow.print()
@@ -890,6 +980,8 @@ export default function GeneratorPage() {
           loadingLaws={loadingLaws}
           onSearchLaws={searchLaws}
           onToggleLaw={toggleLawSelection}
+          initialTemplate={urlParams.template}
+          initialType={urlParams.type}
         />
 
         {/* Modal de Preview */}
